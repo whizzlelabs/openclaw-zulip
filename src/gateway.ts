@@ -7,7 +7,7 @@ const CHANNEL_ID = "zulip";
 
 export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount>["gateway"]> = {
   async startAccount(ctx) {
-    const { account, cfg, abortSignal, log } = ctx;
+    const { account, abortSignal, log } = ctx;
 
     const client = new ZulipClient({
       serverUrl: account.serverUrl,
