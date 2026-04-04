@@ -25,9 +25,12 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
   },
 
   parseExplicitTarget({ raw }) {
-    // Formats:  "stream:<stream_id>/<topic>"  or  "dm:<user_id>"
+    // Formats:  "stream:<stream_id>/<topic>"  or  "dm:<user_id>"  or  "user:<user_id_or_email>"
     if (raw.startsWith("dm:")) {
       return { to: raw.slice(3), chatType: "direct" };
+    }
+    if (raw.startsWith("user:")) {
+      return { to: raw.slice(5), chatType: "direct" };
     }
     if (raw.startsWith("stream:")) {
       const rest = raw.slice(7);

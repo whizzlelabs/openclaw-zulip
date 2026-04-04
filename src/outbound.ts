@@ -41,16 +41,53 @@ function chunkText(text: string, limit: number): string[] {
   return chunks;
 }
 
+/**
+ * Parse the outbound `to` field into a resolved target.
+ *
+ * The SDK may deliver targets in several formats:
+ *   - Numeric string: "8" (Zulip user ID for DMs, or stream ID for streams)
+ *   - "user:<email_or_id>" — DM target (SDK convention)
+ *   - "dm:<user_id>" — DM target (plugin convention)
+ *   - "stream:<stream_id>/<topic>" — stream target (plugin convention)
+ *   - Plain stream name or ID — stream target (when threadId is set)
+ */
+export function resolveOutboundTarget(
+  to: string,
+  threadId?: string | number | null,
+): { type: "direct"; to: number[] | string[]; topic?: undefined } | { type: "stream"; to: string; topic: string } {
+  // Explicit DM prefixes always win
+  if (to.startsWith("user:") || to.startsWith("dm:")) {
+    const recipient = to.startsWith("user:") ? to.slice(5) : to.slice(3);
+    const asNum = Number(recipient);
+    return {
+      type: "direct",
+      to: Number.isFinite(asNum) && String(asNum) === recipient
+        ? [asNum]
+        : [recipient],
+    };
+  }
+
+  // No threadId → DM
+  if (!threadId) {
+    return { type: "direct", to: [Number(to)] };
+  }
+
+  // Stream message
+  return { type: "stream", to, topic: String(threadId) };
+}
+
 async function sendToZulip(
   client: ZulipClient,
   ctx: { to: string; threadId?: string | number | null; text: string },
 ): Promise<{ channel: string; messageId: string }> {
-  const isDm = !ctx.threadId;
-  const type = isDm ? ("direct" as const) : ("stream" as const);
-  const to: string | number[] = isDm ? [Number(ctx.to)] : ctx.to;
-  const topic = isDm ? undefined : String(ctx.threadId);
+  const target = resolveOutboundTarget(ctx.to, ctx.threadId);
 
-  const res = await client.sendMessage({ type, to, topic, content: ctx.text });
+  const res = await client.sendMessage({
+    type: target.type,
+    to: target.to,
+    topic: target.type === "stream" ? target.topic : undefined,
+    content: ctx.text,
+  });
   return { channel: "zulip", messageId: String(res.id) };
 }
 

@@ -81,6 +81,16 @@ describe("zulipMessagingAdapter", () => {
       expect(result).toEqual({ to: "42", threadId: "hello", chatType: "group" });
     });
 
+    it("parses user: prefix with numeric ID", () => {
+      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "user:8" });
+      expect(result).toEqual({ to: "8", chatType: "direct" });
+    });
+
+    it("parses user: prefix with email address", () => {
+      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "user:alice@example.com" });
+      expect(result).toEqual({ to: "alice@example.com", chatType: "direct" });
+    });
+
     it("returns null for unknown prefix", () => {
       const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "unknown:123" });
       expect(result).toBeNull();

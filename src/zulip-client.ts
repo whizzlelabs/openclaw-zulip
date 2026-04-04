@@ -151,7 +151,7 @@ export class ZulipClient {
 
   async sendMessage(params: {
     type: "stream" | "direct";
-    to: string | number[];
+    to: string | number[] | string[];
     topic?: string;
     content: string;
   }): Promise<ZulipSendMessageResult> {
