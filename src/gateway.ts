@@ -218,7 +218,7 @@ async function handleInboundMessage(
     GroupChannel: groupChannel,
     ThreadLabel: topic,
     MessageThreadId: topic,
-    CommandAuthorized: false,
+    CommandAuthorized: undefined,
   });
 
   // ----- Typing indicators -----
