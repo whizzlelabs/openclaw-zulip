@@ -53,18 +53,26 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
     const p = ctx.params;
 
     const text = (s: unknown) => String(s ?? "");
-    const num = (s: unknown) => Number(s);
+    const requireMessageId = (): number | null => {
+      const raw = p.zulip_message_id;
+      if (raw == null || raw === "") return null;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return null;
+      return n;
+    };
 
     switch (ctx.action) {
       case "react": {
-        const messageId = num(p.zulip_message_id);
+        const messageId = requireMessageId();
+        if (messageId == null) return err("zulip_message_id is required for react");
         const emojiName = text(p.zulip_emoji) || "thumbs_up";
         await client.addReaction(messageId, emojiName);
         return ok(`Reacted with :${emojiName}: on message ${messageId}`);
       }
 
       case "edit": {
-        const messageId = num(p.zulip_message_id);
+        const messageId = requireMessageId();
+        if (messageId == null) return err("zulip_message_id is required for edit");
         const content = text(p.zulip_content);
         if (!content) return err("zulip_content is required for edit");
         await client.editMessage(messageId, content);
@@ -73,13 +81,14 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
 
       case "unsend":
       case "delete": {
-        const messageId = num(p.zulip_message_id);
+        const messageId = requireMessageId();
+        if (messageId == null) return err("zulip_message_id is required for unsend");
         await client.deleteMessage(messageId);
         return ok(`Deleted message ${messageId}`);
       }
 
       case "search": {
-        const limit = p.zulip_limit ? num(p.zulip_limit) : 10;
+        const limit = p.zulip_limit ? Number(p.zulip_limit) || 10 : 10;
         const narrow: Array<{ operator: string; operand: string }> = [];
         if (p.zulip_stream_id) narrow.push({ operator: "stream", operand: text(p.zulip_stream_id) });
         if (p.zulip_topic) narrow.push({ operator: "topic", operand: text(p.zulip_topic) });
@@ -94,11 +103,12 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
       }
 
       case "topic-edit": {
-        const messageId = num(p.zulip_message_id);
+        const messageId = requireMessageId();
+        if (messageId == null) return err("zulip_message_id is required for topic-edit");
         const topic = text(p.zulip_topic);
         if (!topic) return err("zulip_topic is required for topic-edit");
         const propagateMode = text(p.zulip_propagate_mode) || "change_all";
-        const streamId = p.zulip_stream_id ? num(p.zulip_stream_id) : undefined;
+        const streamId = p.zulip_stream_id ? Number(p.zulip_stream_id) : undefined;
         await client.updateMessageTopic(messageId, topic, propagateMode, streamId);
         return ok(`Topic updated to "${topic}" (mode: ${propagateMode})`);
       }
@@ -117,7 +127,8 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
         const fileUrl = text(p.zulip_file_path);
         if (!fileUrl) return err("zulip_file_path is required for download-file");
         const buffer = await client.downloadFile(fileUrl);
-        return ok(`Downloaded ${buffer.length} bytes from ${fileUrl}`);
+        const base64 = buffer.toString("base64");
+        return ok(`data:application/octet-stream;base64,${base64}`);
       }
 
       default:

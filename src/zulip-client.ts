@@ -44,10 +44,6 @@ export type ZulipSendMessageResult = {
   id: number;
 };
 
-export type ZulipSearchResult = {
-  messages: ZulipMessage[];
-};
-
 export type ZulipUploadResult = {
   uri: string;
 };
