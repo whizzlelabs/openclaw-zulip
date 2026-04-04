@@ -3,13 +3,21 @@ import { ZulipClient } from "./zulip-client.js";
 import { resolveZulipAccount } from "./config.js";
 import type { CoreConfig } from "./types.js";
 
+const clientCache = new Map<string, ZulipClient>();
+
 function buildClient(cfg: OpenClawConfig, accountId?: string | null): ZulipClient {
   const account = resolveZulipAccount(cfg as CoreConfig, accountId);
-  return new ZulipClient({
-    serverUrl: account.serverUrl,
-    email: account.email,
-    apiKey: account.apiKey,
-  });
+  const cacheKey = `${account.serverUrl}:${account.email}`;
+  let client = clientCache.get(cacheKey);
+  if (!client) {
+    client = new ZulipClient({
+      serverUrl: account.serverUrl,
+      email: account.email,
+      apiKey: account.apiKey,
+    });
+    clientCache.set(cacheKey, client);
+  }
+  return client;
 }
 
 export const zulipOutboundAdapter: NonNullable<ChannelPlugin["outbound"]> = {

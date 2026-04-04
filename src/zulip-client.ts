@@ -62,6 +62,7 @@ export class ZulipClient {
     method: string,
     path: string,
     params?: Record<string, string | number | boolean | undefined>,
+    retryCount = 0,
   ): Promise<T> {
     const url = new URL(`/api/v1${path}`, this.baseUrl);
 
@@ -89,9 +90,12 @@ export class ZulipClient {
     const res = await fetch(url.toString(), init);
 
     if (res.status === 429) {
+      if (retryCount >= 3) {
+        throw new Error(`Zulip API rate limited after ${retryCount} retries (${path})`);
+      }
       const retryAfter = Number(res.headers.get("retry-after") || "1");
       await new Promise((r) => setTimeout(r, retryAfter * 1000));
-      return this.request(method, path, params);
+      return this.request(method, path, params, retryCount + 1);
     }
 
     const json = (await res.json()) as Record<string, unknown>;

@@ -20,8 +20,7 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
     };
   },
 
-  resolveSessionTarget({ id, threadId }) {
-    if (threadId) return `${id}`;
+  resolveSessionTarget({ id }) {
     return id;
   },
 
