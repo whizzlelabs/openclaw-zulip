@@ -126,4 +126,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
 
 ## License
 
-TBD
+[MIT](LICENSE)
