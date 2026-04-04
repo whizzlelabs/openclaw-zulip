@@ -211,7 +211,7 @@ async function handleInboundMessage(
     configuredAllowFrom: account.allowFrom.map(String),
     senderId: senderEmail,
     isSenderAllowed: (sid, allowFrom) =>
-      allowFrom.includes(sid) || allowFrom.includes(senderId) || allowFrom.includes("*"),
+      allowFrom.includes(sid) || allowFrom.includes(String(msg.sender_id)) || allowFrom.includes("*"),
     readAllowFromStore: () =>
       ctx.channelRuntime!.pairing.readAllowFromStore({
         channel: CHANNEL_ID,
