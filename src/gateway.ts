@@ -141,7 +141,7 @@ async function handleInboundMessage(
   }
 
   // Touch any active binding for this conversation so idle timeout resets
-  touchZulipBindingByConversation(account.accountId, peerId, msg.timestamp * 1000);
+  touchZulipBindingByConversation(account.accountId, peerId);
 
   // Resolve route via channelRuntime
   if (!ctx.channelRuntime) {

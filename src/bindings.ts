@@ -28,6 +28,7 @@ export type ZulipTopicBinding = {
 
 // Per-account store: bindingId → ZulipTopicBinding
 const bindingsByAccount = new Map<string, Map<string, ZulipTopicBinding>>();
+let bindingIdSeq = 0;
 
 export function getZulipBindingStore(accountId: string): Map<string, ZulipTopicBinding> {
   let store = bindingsByAccount.get(accountId);
@@ -108,7 +109,7 @@ export function createZulipSessionBindingAdapter(
         return null;
       }
       const store = getZulipBindingStore(accountId);
-      const bindingId = `zulip:${accountId}:${input.conversation.conversationId}:${Date.now()}`;
+      const bindingId = `zulip:${accountId}:${input.conversation.conversationId}:${Date.now()}:${++bindingIdSeq}`;
       const now = Date.now();
       const record: ZulipTopicBinding = {
         bindingId,
