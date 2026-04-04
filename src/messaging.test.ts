@@ -149,18 +149,33 @@ describe("zulipMessagingAdapter", () => {
         expect(result).toEqual({ to: "alice@example.com", kind: "user", source: "normalized" });
       });
 
-      it("resolves numeric stream ID with topic", async () => {
+      it("resolves numeric stream ID with topic via API", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => ({ stream_id: 42, name: "general", description: "", invite_only: false }),
+        } as any);
+
         const result = await resolver.resolveTarget!({
-          cfg: baseCfg, input: "stream:42/general", normalized: "stream:42/general",
+          cfg: baseCfg, input: "stream:42/hello", normalized: "stream:42/hello",
         });
-        expect(result).toEqual({ to: "42/general", kind: "channel", source: "normalized" });
+        expect(result).toEqual({
+          to: "general/hello",
+          kind: "channel",
+          display: "#general > hello",
+          source: "directory",
+        });
       });
 
-      it("resolves numeric stream ID without topic", async () => {
+      it("falls back to numeric ID when API lookup fails", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => { throw new Error("not found"); },
+        } as any);
+
         const result = await resolver.resolveTarget!({
-          cfg: baseCfg, input: "stream:42", normalized: "stream:42",
+          cfg: baseCfg, input: "stream:42/hello", normalized: "stream:42/hello",
         });
-        expect(result).toEqual({ to: "42", kind: "channel", source: "normalized" });
+        expect(result).toEqual({ to: "42/hello", kind: "channel", source: "normalized" });
       });
 
       it("resolves stream name via API", async () => {
@@ -175,7 +190,7 @@ describe("zulipMessagingAdapter", () => {
           cfg: baseCfg, input: "stream:Jeeves:agent-output", normalized: "stream:Jeeves:agent-output",
         });
         expect(result).toEqual({
-          to: "7/agent-output",
+          to: "Jeeves/agent-output",
           kind: "channel",
           display: "#Jeeves > agent-output",
           source: "directory",

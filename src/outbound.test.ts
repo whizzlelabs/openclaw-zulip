@@ -37,6 +37,21 @@ describe("resolveOutboundTarget", () => {
     expect(result).toEqual({ type: "direct", to: [42] });
   });
 
+  it("splits stream/topic from to when no threadId", () => {
+    const result = resolveOutboundTarget("Jeeves/agent-output", undefined);
+    expect(result).toEqual({ type: "stream", to: "Jeeves", topic: "agent-output" });
+  });
+
+  it("splits stream/topic from to with numeric stream ID", () => {
+    const result = resolveOutboundTarget("42/general", undefined);
+    expect(result).toEqual({ type: "stream", to: "42", topic: "general" });
+  });
+
+  it("explicit threadId overrides embedded topic", () => {
+    const result = resolveOutboundTarget("Jeeves/agent-output", "override-topic");
+    expect(result).toEqual({ type: "stream", to: "Jeeves", topic: "override-topic" });
+  });
+
   it("handles empty threadId as DM", () => {
     const result = resolveOutboundTarget("8", "");
     expect(result).toEqual({ type: "direct", to: [8] });

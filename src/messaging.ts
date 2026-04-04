@@ -80,14 +80,27 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
         const streamPart = sepIdx === -1 ? rest : rest.slice(0, sepIdx);
         const topicPart = sepIdx === -1 ? undefined : rest.slice(sepIdx + 1);
 
-        // If streamPart is numeric, use it directly as the stream ID
+        // If streamPart is numeric, resolve to stream name via API
         const asNum = Number(streamPart);
         if (Number.isFinite(asNum) && String(asNum) === streamPart) {
-          const to = topicPart ? `${streamPart}/${topicPart}` : streamPart;
-          return { to, kind: "channel" as const, source: "normalized" as const };
+          const client = buildClient(cfg, accountId);
+          try {
+            const stream = await client.getStreamById(asNum);
+            const to = topicPart ? `${stream.name}/${topicPart}` : stream.name;
+            return {
+              to,
+              kind: "channel" as const,
+              display: topicPart ? `#${stream.name} > ${topicPart}` : `#${stream.name}`,
+              source: "directory" as const,
+            };
+          } catch {
+            // Fall back to numeric ID if lookup fails
+            const to = topicPart ? `${streamPart}/${topicPart}` : streamPart;
+            return { to, kind: "channel" as const, source: "normalized" as const };
+          }
         }
 
-        // Otherwise resolve stream name → ID via Zulip API
+        // Resolve stream name → verify it exists via Zulip API
         const client = buildClient(cfg, accountId);
         const streams = await client.getStreams();
         const match = streams.find(
@@ -95,8 +108,7 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
         );
         if (!match) return null;
 
-        const streamId = String(match.stream_id);
-        const to = topicPart ? `${streamId}/${topicPart}` : streamId;
+        const to = topicPart ? `${match.name}/${topicPart}` : match.name;
         return {
           to,
           kind: "channel" as const,

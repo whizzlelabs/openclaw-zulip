@@ -67,6 +67,14 @@ export function resolveOutboundTarget(
     };
   }
 
+  // If to contains "/" it encodes "stream/topic" — split it and treat as stream
+  const slashIdx = to.indexOf("/");
+  if (slashIdx !== -1) {
+    const streamPart = to.slice(0, slashIdx);
+    const topicPart = threadId ? String(threadId) : to.slice(slashIdx + 1);
+    return { type: "stream", to: streamPart, topic: topicPart };
+  }
+
   // No threadId → DM
   if (!threadId) {
     return { type: "direct", to: [Number(to)] };
