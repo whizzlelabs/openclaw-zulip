@@ -76,9 +76,19 @@ describe("zulipMessagingAdapter", () => {
       expect(result).toEqual({ to: "42", chatType: "group" });
     });
 
-    it("parses stream: prefix with topic", () => {
+    it("parses stream: prefix with topic (slash separator)", () => {
       const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:42/hello" });
       expect(result).toEqual({ to: "42", threadId: "hello", chatType: "group" });
+    });
+
+    it("parses stream: prefix with topic (colon separator)", () => {
+      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:Jeeves:agent-output" });
+      expect(result).toEqual({ to: "Jeeves", threadId: "agent-output", chatType: "group" });
+    });
+
+    it("prefers slash over colon when both present", () => {
+      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:42/topic:with:colons" });
+      expect(result).toEqual({ to: "42", threadId: "topic:with:colons", chatType: "group" });
     });
 
     it("parses user: prefix with numeric ID", () => {

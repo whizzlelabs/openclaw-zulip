@@ -34,13 +34,16 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
     }
     if (raw.startsWith("stream:")) {
       const rest = raw.slice(7);
+      // Support both "stream:name/topic" and "stream:name:topic" separators
       const slashIdx = rest.indexOf("/");
-      if (slashIdx === -1) {
+      const colonIdx = rest.indexOf(":");
+      const sepIdx = slashIdx !== -1 ? slashIdx : colonIdx;
+      if (sepIdx === -1) {
         return { to: rest, chatType: "group" };
       }
       return {
-        to: rest.slice(0, slashIdx),
-        threadId: rest.slice(slashIdx + 1),
+        to: rest.slice(0, sepIdx),
+        threadId: rest.slice(sepIdx + 1),
         chatType: "group",
       };
     }
