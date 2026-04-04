@@ -2,13 +2,24 @@
   "name": "openclaw-zulip",
   "version": "0.1.0",
   "description": "OpenClaw channel plugin for Zulip — clean-room implementation with ACP topic bindings",
+  "license": "MIT",
+  "author": "whizzlefred",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/whizzlelabs/openclaw-zulip.git"
+  },
+  "bugs": {
+    "url": "https://github.com/whizzlelabs/openclaw-zulip/issues"
+  },
+  "homepage": "https://github.com/whizzlelabs/openclaw-zulip#readme",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist/",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
