@@ -5,5 +5,5 @@ import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
 // ---------------------------------------------------------------------------
 
 export const zulipCommandAdapter: NonNullable<ChannelPlugin["commands"]> = {
-  enforceOwnerForCommands: true,
+  enforceOwnerForCommands: false,
 };
