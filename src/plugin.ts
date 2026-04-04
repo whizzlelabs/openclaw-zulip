@@ -9,6 +9,7 @@ import { zulipOutboundAdapter } from "./outbound.js";
 import { zulipThreadingAdapter } from "./threading.js";
 import { zulipMessagingAdapter } from "./messaging.js";
 import { zulipActionsAdapter } from "./actions.js";
+import { zulipBindingsAdapter, zulipConversationBindingsSupport } from "./bindings.js";
 
 export const zulipPlugin: ChannelPlugin<ZulipResolvedAccount> = createChatChannelPlugin({
   base: {
@@ -39,6 +40,8 @@ export const zulipPlugin: ChannelPlugin<ZulipResolvedAccount> = createChatChanne
     gateway: zulipGatewayAdapter,
     messaging: zulipMessagingAdapter,
     actions: zulipActionsAdapter,
+    bindings: zulipBindingsAdapter,
+    conversationBindings: zulipConversationBindingsSupport,
     reload: {
       configPrefixes: ["channels.zulip"],
     },

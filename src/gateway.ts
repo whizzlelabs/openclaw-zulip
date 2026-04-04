@@ -1,7 +1,16 @@
 import type { ChannelPlugin, ChannelGatewayContext } from "openclaw/plugin-sdk";
 import { dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/irc";
+import {
+  registerSessionBindingAdapter,
+  unregisterSessionBindingAdapter,
+} from "openclaw/plugin-sdk/conversation-runtime";
 import type { ZulipResolvedAccount } from "./types.js";
 import { ZulipClient, type ZulipMessage } from "./zulip-client.js";
+import {
+  createZulipSessionBindingAdapter,
+  clearZulipBindingStore,
+  touchZulipBindingByConversation,
+} from "./bindings.js";
 
 const CHANNEL_ID = "zulip";
 
@@ -14,6 +23,10 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
       email: account.email,
       apiKey: account.apiKey,
     });
+
+    // Register session binding adapter for ACP topic bindings
+    const bindingAdapter = createZulipSessionBindingAdapter(account.accountId);
+    registerSessionBindingAdapter(bindingAdapter);
 
     // Identify ourselves so we can filter our own messages
     const self = await client.getOwnUser();
@@ -74,13 +87,15 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
       }
     }
 
-    // Cleanup — deregister queue
+    // Cleanup — deregister queue and binding adapter
     try {
       await client.deleteEventQueue(queue.queue_id);
       log?.info("Event queue deregistered.");
     } catch {
       // Queue may already be expired
     }
+    unregisterSessionBindingAdapter({ channel: CHANNEL_ID, accountId: account.accountId, adapter: bindingAdapter });
+    clearZulipBindingStore(account.accountId);
 
     ctx.setStatus({
       accountId: account.accountId,
@@ -124,6 +139,9 @@ async function handleInboundMessage(
     peerId = String(msg.sender_id);
     chatType = "direct";
   }
+
+  // Touch any active binding for this conversation so idle timeout resets
+  touchZulipBindingByConversation(account.accountId, peerId, msg.timestamp * 1000);
 
   // Resolve route via channelRuntime
   if (!ctx.channelRuntime) {
