@@ -67,6 +67,17 @@ export function resolveOutboundTarget(
     };
   }
 
+  // Explicit stream prefix — "stream:<id>/<topic>" or "stream:<id>:<topic>"
+  if (to.startsWith("stream:")) {
+    const rest = to.slice(7);
+    const slashIdx = rest.indexOf("/");
+    const colonIdx = rest.indexOf(":");
+    const sepIdx = slashIdx !== -1 ? slashIdx : colonIdx;
+    const streamId = sepIdx === -1 ? rest : rest.slice(0, sepIdx);
+    const topic = sepIdx === -1 ? (threadId ? String(threadId) : "(no topic)") : rest.slice(sepIdx + 1);
+    return { type: "stream", to: streamId, topic };
+  }
+
   // No threadId → DM
   if (!threadId) {
     return { type: "direct", to: [Number(to)] };

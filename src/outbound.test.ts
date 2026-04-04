@@ -37,6 +37,26 @@ describe("resolveOutboundTarget", () => {
     expect(result).toEqual({ type: "direct", to: [42] });
   });
 
+  it("handles stream: prefix with slash separator", () => {
+    const result = resolveOutboundTarget("stream:42/general", undefined);
+    expect(result).toEqual({ type: "stream", to: "42", topic: "general" });
+  });
+
+  it("handles stream: prefix with colon separator", () => {
+    const result = resolveOutboundTarget("stream:Jeeves:agent-output", undefined);
+    expect(result).toEqual({ type: "stream", to: "Jeeves", topic: "agent-output" });
+  });
+
+  it("handles stream: prefix without topic uses threadId", () => {
+    const result = resolveOutboundTarget("stream:42", "fallback-topic");
+    expect(result).toEqual({ type: "stream", to: "42", topic: "fallback-topic" });
+  });
+
+  it("handles stream: prefix with topic containing colons (slash separator)", () => {
+    const result = resolveOutboundTarget("stream:42/topic:with:colons", undefined);
+    expect(result).toEqual({ type: "stream", to: "42", topic: "topic:with:colons" });
+  });
+
   it("handles empty threadId as DM", () => {
     const result = resolveOutboundTarget("8", "");
     expect(result).toEqual({ type: "direct", to: [8] });
