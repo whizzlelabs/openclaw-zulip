@@ -54,7 +54,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 - **type:** `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
-- **scope:** `config`, `gateway`, `outbound`, `threading`, `messaging`, `bindings`, `security`, `setup`, `client`, `repo`
+- **scope:** `config`, `gateway`, `outbound`, `threading`, `messaging`, `bindings`, `security`, `setup`, `client`, `actions`, `directory`, `resolver`, `status`, `commands`, `groups`, `allowlist`, `repo`
 
 ### Pull Requests
 
@@ -77,7 +77,8 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 - `src/index.ts` — Plugin entry point, exports the plugin definition
 - `src/plugin.ts` — Assembles all adapters into the `ChannelPlugin` object
 - `src/types.ts` — Shared types (account shapes, config sections)
-- `src/<adapter>.ts` — One file per SDK adapter surface
+- `src/config-schema.ts` — Zod-based config validation schema
+- `src/<adapter>.ts` — One file per SDK adapter surface (config, gateway, outbound, threading, messaging, bindings, security, allowlist, actions, commands, directory, groups, resolver, status, setup, agent-prompt)
 - `src/zulip-client.ts` — Zulip API wrapper (all HTTP calls go through here)
 
 ### Testing

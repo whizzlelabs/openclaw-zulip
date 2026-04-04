@@ -2,21 +2,16 @@
 
 A clean-room [OpenClaw](https://github.com/openclaw/openclaw) channel plugin for [Zulip](https://zulip.com), built from scratch with the OpenClaw Plugin SDK.
 
-## Why
+## Features
 
-The existing community plugin (`FtlC-ian/openclaw-channel-zulip`) is stale and lacks ACP topic binding support. This plugin provides:
-
-- **Full Zulip messaging** — Streams, topics, DMs, reactions, media
+- **Full Zulip messaging** — Streams, topics, DMs, reactions, media, edits, unsend
 - **ACP topic bindings** — Bind ACP agent sessions to specific Zulip topics
-- **Active maintenance** — Under the `whizzlelabs` org with a clear release cycle
-
-## Status
-
-🚧 **Early development** — Not yet functional. See whizzlelabs/openclaw-zulip#1 for the project vision and plan.
+- **Dual account modes** — Run as a bot or impersonate a user account
+- **Stream-level controls** — Per-stream config (require mention, enable/disable)
+- **Security** — DM policy enforcement, allow-from lists
+- **Actions** — Channel list, channel info, member info queries
 
 ## Installation
-
-> Not yet published. Coming soon.
 
 ```bash
 openclaw plugins install openclaw-zulip
@@ -24,10 +19,66 @@ openclaw plugins install openclaw-zulip
 
 ## Configuration
 
-> Details TBD. Will require:
-> - Zulip server URL
-> - Bot email address
-> - Bot API key
+Add a `channels.zulip` section to your OpenClaw config:
+
+```yaml
+channels:
+  zulip:
+    serverUrl: https://your-org.zulipchat.com
+    email: bot@your-org.zulipchat.com
+    apiKey: your-bot-api-key
+    mode: bot  # or "user"
+
+    # Optional: per-stream overrides
+    streams:
+      general:
+        requireMention: true
+      private-ops:
+        enabled: false
+
+    # Optional: multi-account setup
+    accounts:
+      work-bot:
+        serverUrl: https://work.zulipchat.com
+        email: bot@work.zulipchat.com
+        apiKey: ...
+```
+
+### Account modes
+
+| Mode | Description |
+|------|-------------|
+| `bot` | Connects as a Zulip bot (default). Messages appear from the bot identity. |
+| `user` | Connects as a regular Zulip user. Messages appear from that user's identity. |
+
+### Configuration fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `serverUrl` | Yes | Zulip server URL |
+| `email` | Yes | Bot or user email address |
+| `apiKey` | Yes | Zulip API key |
+| `mode` | No | `bot` (default) or `user` |
+| `streams` | No | Per-stream config overrides |
+| `dmPolicy` | No | DM handling policy |
+| `allowFrom` | No | Allowed user IDs or emails |
+| `replyToMode` | No | Reply targeting behavior |
+
+## Capabilities
+
+| Feature | Supported |
+|---------|-----------|
+| Direct messages | Yes |
+| Group conversations (streams) | Yes |
+| Threads (topics) | Yes |
+| Reactions | Yes |
+| Message editing | Yes |
+| Unsend | Yes |
+| Reply | Yes |
+| Media | Yes |
+| ACP topic bindings | Yes |
+| Native commands | No |
+| Polls | No |
 
 ## Development
 
@@ -36,6 +87,7 @@ git clone https://github.com/whizzlelabs/openclaw-zulip.git
 cd openclaw-zulip
 npm install
 npm run build
+npm test
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
