@@ -223,6 +223,11 @@ async function handleInboundMessage(
       ctx.channelRuntime.commands.resolveCommandAuthorizedFromAuthorizers,
   });
 
+  const isCommand = msg.content.trim().startsWith("/");
+  if (isCommand) {
+    log?.info(`[cmd-debug] body=${JSON.stringify(msg.content)} sender=${senderEmail} senderId=${senderId} commandAuthorized=${commandAuthorized}`);
+  }
+
   const ctxPayload = ctx.channelRuntime.reply.finalizeInboundContext({
     Body: msg.content,
     From: senderEmail,
@@ -329,7 +334,14 @@ async function handleInboundMessage(
     },
     deliver: async (payload) => {
       const text = payload.text ?? "";
-      if (!text.trim() && !payload.mediaUrl && !payload.mediaUrls?.length) return;
+      if (!text.trim() && !payload.mediaUrl && !payload.mediaUrls?.length) {
+        if (isCommand) log?.info(`[cmd-debug] deliver: skipped (empty payload)`);
+        return;
+      }
+
+      if (isCommand) {
+        log?.info(`[cmd-debug] deliver: text=${JSON.stringify(text.slice(0, 120))} to=${to} threadId=${topic} isGroup=${isGroup}`);
+      }
 
       const threadId = topic;
       const targetTo = to;
@@ -348,13 +360,20 @@ async function handleInboundMessage(
           content: text,
         });
       }
+
+      if (isCommand) log?.info(`[cmd-debug] deliver: sent OK`);
     },
     onRecordError: (err) => log?.error(`Session record error: ${err}`),
     onDispatchError: (err) => {
       dispatchOk = false;
       log?.error(`Dispatch error: ${err}`);
+      if (isCommand) log?.info(`[cmd-debug] dispatchError: ${err}`);
     },
   });
+
+  if (isCommand) {
+    log?.info(`[cmd-debug] dispatch complete: dispatchOk=${dispatchOk}`);
+  }
 
   // ----- Finalize ack reactions -----
   if (ackCfg.enabled) {
