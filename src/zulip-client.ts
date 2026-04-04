@@ -340,6 +340,50 @@ export class ZulipClient {
     return { uri: res.uri };
   }
 
+  // -------------------------------------------------------------------------
+  // Users
+  // -------------------------------------------------------------------------
+
+  async getUsers(): Promise<Array<{ user_id: number; email: string; full_name: string; is_bot: boolean }>> {
+    const res = await this.request<{
+      result: string;
+      members: Array<{ user_id: number; email: string; full_name: string; is_bot: boolean }>;
+    }>("GET", "/users");
+    return res.members;
+  }
+
+  async getUser(userId: number): Promise<{ user_id: number; email: string; full_name: string; is_bot: boolean; avatar_url?: string; role: number }> {
+    const res = await this.request<{
+      result: string;
+      user: { user_id: number; email: string; full_name: string; is_bot: boolean; avatar_url?: string; role: number };
+    }>("GET", `/users/${userId}`);
+    return res.user;
+  }
+
+  // -------------------------------------------------------------------------
+  // Stream details
+  // -------------------------------------------------------------------------
+
+  async getStreamById(streamId: number): Promise<ZulipStream & { rendered_description?: string }> {
+    const res = await this.request<{
+      result: string;
+      stream: ZulipStream & { rendered_description?: string };
+    }>("GET", `/streams/${streamId}`);
+    return res.stream;
+  }
+
+  async getStreamMembers(streamId: number): Promise<number[]> {
+    const res = await this.request<{ result: string; subscribers: number[] }>(
+      "GET",
+      `/streams/${streamId}/members`,
+    );
+    return res.subscribers;
+  }
+
+  // -------------------------------------------------------------------------
+  // File download
+  // -------------------------------------------------------------------------
+
   async downloadFile(url: string): Promise<Buffer> {
     // url may be relative (e.g. /user_uploads/...) — prefix with server base
     const fullUrl = url.startsWith("http") ? url : `${this.baseUrl}${url}`;

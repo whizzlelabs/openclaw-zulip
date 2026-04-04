@@ -10,7 +10,7 @@ import { buildClient } from "./outbound.js";
 export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
   describeMessageTool(_ctx) {
     return {
-      actions: ["react", "edit", "unsend", "search", "topic-edit", "upload-file", "download-file"],
+      actions: ["react", "edit", "unsend", "search", "topic-edit", "upload-file", "download-file", "channel-list", "channel-info", "member-info"],
       schema: {
         visibility: "current-channel",
         properties: {
@@ -42,6 +42,9 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
           ),
           zulip_limit: Type.Optional(
             Type.Number({ description: "Maximum number of messages to return from search (default 10)" }),
+          ),
+          zulip_user_id: Type.Optional(
+            Type.Number({ description: "Zulip user ID for the member-info action" }),
           ),
         },
       },
@@ -129,6 +132,28 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
         const buffer = await client.downloadFile(fileUrl);
         const base64 = buffer.toString("base64");
         return ok(`data:application/octet-stream;base64,${base64}`);
+      }
+
+      case "channel-list": {
+        const streams = await client.getStreams();
+        return ok(JSON.stringify(streams, null, 2));
+      }
+
+      case "channel-info": {
+        const streamId = p.zulip_stream_id ? Number(p.zulip_stream_id) : null;
+        if (streamId == null) return err("zulip_stream_id is required for channel-info");
+        const [stream, members] = await Promise.all([
+          client.getStreamById(streamId),
+          client.getStreamMembers(streamId),
+        ]);
+        return ok(JSON.stringify({ ...stream, subscribers: members }, null, 2));
+      }
+
+      case "member-info": {
+        const userId = p.zulip_user_id ? Number(p.zulip_user_id) : null;
+        if (userId == null) return err("zulip_user_id is required for member-info");
+        const user = await client.getUser(userId);
+        return ok(JSON.stringify(user, null, 2));
       }
 
       default:
