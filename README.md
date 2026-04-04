@@ -80,6 +80,38 @@ channels:
 | Native commands | No |
 | Polls | No |
 
+## Migrating from openclaw-channel-zulip
+
+If you're replacing the old `openclaw-channel-zulip` plugin, note these config changes:
+
+### Config field renames
+
+| Old field | New field |
+|-----------|-----------|
+| `url` | `serverUrl` |
+
+### Streams format change
+
+The old plugin used an array of stream names:
+
+```yaml
+streams:
+  - "AI System"
+  - "Homelab"
+```
+
+The new plugin uses an object with per-stream config:
+
+```yaml
+streams:
+  AI System:
+    requireMention: true
+  Homelab:
+    enabled: true
+```
+
+To migrate, convert each stream name to a key with `{}` (empty config) or add per-stream settings as needed.
+
 ## Development
 
 ```bash

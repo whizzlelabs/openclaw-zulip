@@ -1,10 +1,11 @@
 import type { ChannelPlugin, ChannelGatewayContext } from "openclaw/plugin-sdk";
-import { dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/irc";
+import { createChannelReplyPipeline, dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/irc";
 import {
   registerSessionBindingAdapter,
   unregisterSessionBindingAdapter,
 } from "openclaw/plugin-sdk/conversation-runtime";
 import type { ZulipResolvedAccount } from "./types.js";
+import { getZulipSection } from "./types.js";
 import { ZulipClient, type ZulipMessage } from "./zulip-client.js";
 import {
   createZulipSessionBindingAdapter,
@@ -114,6 +115,29 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
 };
 
 // ---------------------------------------------------------------------------
+// Ack reactions config
+// ---------------------------------------------------------------------------
+
+type AckReactionsConfig = {
+  enabled: boolean;
+  onStart?: string;
+  onSuccess?: string;
+  onError?: string;
+};
+
+function resolveAckReactions(cfg: import("openclaw/plugin-sdk/core").OpenClawConfig): AckReactionsConfig {
+  const section = getZulipSection(cfg) as Record<string, unknown> | undefined;
+  const reactions = section?.reactions as Record<string, unknown> | undefined;
+  if (!reactions || reactions.enabled === false) return { enabled: false };
+  return {
+    enabled: true,
+    onStart: (reactions.onStart as string) ?? undefined,
+    onSuccess: (reactions.onSuccess as string) ?? undefined,
+    onError: (reactions.onError as string) ?? undefined,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Inbound message handling
 // ---------------------------------------------------------------------------
 
@@ -197,6 +221,65 @@ async function handleInboundMessage(
     CommandAuthorized: false,
   });
 
+  // ----- Typing indicators -----
+  const pipeline = createChannelReplyPipeline({
+    cfg,
+    agentId: route.agentId,
+    channel: CHANNEL_ID,
+    accountId: account.accountId,
+    typing: {
+      start: async () => {
+        if (isGroup && streamId != null && topic) {
+          await client.sendTypingNotification({
+            op: "start",
+            type: "stream",
+            streamId,
+            topic,
+          });
+        } else {
+          await client.sendTypingNotification({
+            op: "start",
+            type: "direct",
+            to: [Number(to)],
+          });
+        }
+      },
+      stop: async () => {
+        if (isGroup && streamId != null && topic) {
+          await client.sendTypingNotification({
+            op: "stop",
+            type: "stream",
+            streamId,
+            topic,
+          });
+        } else {
+          await client.sendTypingNotification({
+            op: "stop",
+            type: "direct",
+            to: [Number(to)],
+          });
+        }
+      },
+      onStartError: (err) => log?.debug?.(`Typing start error: ${err}`),
+      onStopError: (err) => log?.debug?.(`Typing stop error: ${err}`),
+    },
+  });
+
+  // ----- Ack reactions -----
+  const ackCfg = resolveAckReactions(cfg);
+  let ackStartApplied = false;
+
+  if (ackCfg.enabled && ackCfg.onStart) {
+    try {
+      await client.addReaction(msg.id, ackCfg.onStart);
+      ackStartApplied = true;
+    } catch (err) {
+      log?.debug?.(`Ack reaction (onStart) failed: ${err}`);
+    }
+  }
+
+  let dispatchOk = true;
+
   // Dispatch reply
   await dispatchInboundReplyWithBase({
     cfg,
@@ -215,6 +298,10 @@ async function handleInboundMessage(
             ctx.channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher,
         },
       },
+    },
+    replyOptions: {
+      onReplyStart: pipeline.typingCallbacks?.onReplyStart,
+      onTypingCleanup: pipeline.typingCallbacks?.onCleanup,
     },
     deliver: async (payload) => {
       const text = payload.text ?? "";
@@ -239,6 +326,29 @@ async function handleInboundMessage(
       }
     },
     onRecordError: (err) => log?.error(`Session record error: ${err}`),
-    onDispatchError: (err) => log?.error(`Dispatch error: ${err}`),
+    onDispatchError: (err) => {
+      dispatchOk = false;
+      log?.error(`Dispatch error: ${err}`);
+    },
   });
+
+  // ----- Finalize ack reactions -----
+  if (ackCfg.enabled) {
+    if (ackStartApplied && ackCfg.onStart) {
+      try {
+        await client.removeReaction(msg.id, ackCfg.onStart);
+      } catch (err) {
+        log?.debug?.(`Ack reaction removal failed: ${err}`);
+      }
+    }
+
+    const terminalEmoji = dispatchOk ? ackCfg.onSuccess : ackCfg.onError;
+    if (terminalEmoji) {
+      try {
+        await client.addReaction(msg.id, terminalEmoji);
+      } catch (err) {
+        log?.debug?.(`Ack terminal reaction failed: ${err}`);
+      }
+    }
+  }
 }

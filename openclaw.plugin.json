@@ -1,0 +1,33 @@
+{
+  "id": "zulip",
+  "channels": ["zulip"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "serverUrl": {
+        "type": "string",
+        "title": "Server URL",
+        "description": "Zulip server URL (e.g. https://org.zulipchat.com)"
+      },
+      "email": {
+        "type": "string",
+        "title": "Bot email",
+        "description": "Bot email address for Zulip API authentication"
+      },
+      "apiKey": {
+        "type": "string",
+        "title": "API key",
+        "description": "Zulip bot API key",
+        "sensitive": true
+      },
+      "mode": {
+        "type": "string",
+        "title": "Account mode",
+        "description": "bot (default) or user",
+        "enum": ["bot", "user"],
+        "default": "bot"
+      }
+    }
+  }
+}
