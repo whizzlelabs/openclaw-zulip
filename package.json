@@ -39,7 +39,9 @@
     "zulip"
   ],
   "openclaw": {
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.58.0",
@@ -49,5 +51,8 @@
     "openclaw": "^2026.3.28",
     "typescript": "^5.7.0",
     "vitest": "^4.1.2"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49"
   }
 }
