@@ -1,0 +1,27 @@
+{
+  "name": "openclaw-zulip",
+  "version": "0.1.0",
+  "description": "OpenClaw channel plugin for Zulip — clean-room implementation with ACP topic bindings",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "openclaw-channel",
+    "zulip"
+  ],
+  "devDependencies": {
+    "openclaw": "^2026.3.28",
+    "typescript": "^5.7.0"
+  }
+}
