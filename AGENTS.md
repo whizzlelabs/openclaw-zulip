@@ -11,11 +11,13 @@ For details see:
 
 ## Repository Purpose
 
-A clean-room OpenClaw channel plugin for Zulip, built with the OpenClaw Plugin SDK. Replaces the stale community plugin (`FtlC-ian/openclaw-channel-zulip`).
+A clean-room OpenClaw channel plugin for Zulip, built with the OpenClaw Plugin SDK.
 
-**Primary goal:** Solid, maintained Zulip integration for OpenClaw — streams, topics, DMs, reactions, media.
+**Primary goal:** Zulip integration for OpenClaw — streams, topics, DMs, reactions, media, edits, unsend.
 
 **Differentiator:** ACP topic bindings — bind ACP agent sessions to Zulip topics.
+
+**Status:** Core implementation complete (Phases 1–4). All adapter surfaces are wired and functional.
 
 ## Repository Structure
 
@@ -25,13 +27,22 @@ src/
   plugin.ts             # Plugin assembly — createChatChannelPlugin(...)
   types.ts              # ZulipAccount, resolved account shape, config types
   config.ts             # ChannelConfigAdapter — account CRUD
+  config-schema.ts      # Zod schema for config validation
   setup.ts              # ChannelSetupAdapter — onboarding
   gateway.ts            # ChannelGatewayAdapter — Zulip event queue
   outbound.ts           # ChannelOutboundAdapter — send messages
   security.ts           # DM policy, allow-from
+  allowlist.ts          # Allow-from list adapter
   threading.ts          # Topic-as-thread mapping
   messaging.ts          # Session key grammar, target parsing
   bindings.ts           # ACP topic bindings
+  actions.ts            # Channel-list, channel-info, member-info actions
+  commands.ts           # Command adapter
+  directory.ts          # User/member directory adapter
+  groups.ts             # Groups adapter
+  resolver.ts           # Account resolver adapter
+  status.ts             # Connection status / health probes
+  agent-prompt.ts       # Agent prompt adapter
   zulip-client.ts       # Zulip REST API wrapper
 ```
 
@@ -62,11 +73,15 @@ This plugin implements the `ChannelPlugin` interface from `openclaw/plugin-sdk/c
 
 ### Important Types
 
-- `ChannelPlugin<ResolvedAccount>` — Full plugin contract
+- `ChannelPlugin<ResolvedAccount, ZulipProbe>` — Full plugin contract
 - `ChannelGatewayAdapter` — Lifecycle (start/stop account)
 - `ChannelOutboundAdapter` — Message delivery
 - `ChannelConfiguredBindingProvider` — ACP binding compilation and matching
 - `ChannelMessagingAdapter` — Session key grammar, target resolution
+- `ChannelActionsAdapter` — Channel-list, channel-info, member-info queries
+- `ChannelDirectoryAdapter` — User/member directory lookups
+- `ChannelResolverAdapter` — Account resolution from config
+- `ChannelStatusAdapter` — Health probes and connection status
 
 ### Zulip Mapping
 
@@ -119,7 +134,7 @@ Types: `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`
 
 **Types:** `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
-**Scopes:** `config`, `gateway`, `outbound`, `threading`, `messaging`, `bindings`, `security`, `setup`, `client`, `repo`
+**Scopes:** `config`, `gateway`, `outbound`, `threading`, `messaging`, `bindings`, `security`, `setup`, `client`, `actions`, `directory`, `resolver`, `status`, `commands`, `groups`, `allowlist`, `repo`
 
 **Examples:**
 
