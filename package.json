@@ -7,6 +7,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist/",
+    "openclaw.plugin.json",
     "README.md"
   ],
   "scripts": {
@@ -25,6 +26,9 @@
     "openclaw-channel",
     "zulip"
   ],
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
