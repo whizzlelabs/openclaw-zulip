@@ -5,6 +5,8 @@ import {
 } from "openclaw/plugin-sdk/channel-config-helpers";
 import {
   createAccountListHelpers,
+  listCombinedAccountIds,
+  DEFAULT_ACCOUNT_ID,
   normalizeAccountId,
   resolveMergedAccountConfig,
 } from "openclaw/plugin-sdk/account-resolution";
@@ -18,11 +20,30 @@ import { getZulipSection } from "./types.js";
 const SECTION_KEY = "zulip";
 
 // ---------------------------------------------------------------------------
-// Account list / default-id helpers (shared SDK utility)
+// Account list / default-id helpers
 // ---------------------------------------------------------------------------
 
-const { listAccountIds: listZulipAccountIds, resolveDefaultAccountId } =
+const { listConfiguredAccountIds, resolveDefaultAccountId } =
   createAccountListHelpers(SECTION_KEY);
+
+/**
+ * List all Zulip account IDs including the implicit default when root-level
+ * credentials (email / apiKey) are present.  Without this, the SDK helper
+ * only falls back to "default" when the accounts map is *empty*, silently
+ * dropping the root-level account once named sub-accounts exist.
+ * See: https://github.com/whizzlelabs/openclaw-zulip/issues/26
+ */
+export function listZulipAccountIds(cfg: CoreConfig): string[] {
+  const section = getZulipSection(cfg);
+  const hasBaseCredentials =
+    (typeof section?.email === "string" && section.email.trim() !== "") ||
+    (typeof section?.apiKey === "string" && section.apiKey.trim() !== "");
+
+  return listCombinedAccountIds({
+    configuredAccountIds: listConfiguredAccountIds(cfg),
+    implicitAccountId: hasBaseCredentials ? DEFAULT_ACCOUNT_ID : undefined,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Account resolution
