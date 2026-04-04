@@ -115,10 +115,6 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
 };
 
 // ---------------------------------------------------------------------------
-// Inbound message handling
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Ack reactions config
 // ---------------------------------------------------------------------------
 
@@ -233,43 +229,35 @@ async function handleInboundMessage(
     accountId: account.accountId,
     typing: {
       start: async () => {
-        try {
-          if (isGroup && streamId != null && topic) {
-            await client.sendTypingNotification({
-              op: "start",
-              type: "stream",
-              streamId,
-              topic,
-            });
-          } else {
-            await client.sendTypingNotification({
-              op: "start",
-              type: "direct",
-              to: [Number(to)],
-            });
-          }
-        } catch {
-          // Typing is best-effort; don't let failures break the reply flow
+        if (isGroup && streamId != null && topic) {
+          await client.sendTypingNotification({
+            op: "start",
+            type: "stream",
+            streamId,
+            topic,
+          });
+        } else {
+          await client.sendTypingNotification({
+            op: "start",
+            type: "direct",
+            to: [Number(to)],
+          });
         }
       },
       stop: async () => {
-        try {
-          if (isGroup && streamId != null && topic) {
-            await client.sendTypingNotification({
-              op: "stop",
-              type: "stream",
-              streamId,
-              topic,
-            });
-          } else {
-            await client.sendTypingNotification({
-              op: "stop",
-              type: "direct",
-              to: [Number(to)],
-            });
-          }
-        } catch {
-          // best-effort
+        if (isGroup && streamId != null && topic) {
+          await client.sendTypingNotification({
+            op: "stop",
+            type: "stream",
+            streamId,
+            topic,
+          });
+        } else {
+          await client.sendTypingNotification({
+            op: "stop",
+            type: "direct",
+            to: [Number(to)],
+          });
         }
       },
       onStartError: (err) => log?.debug?.(`Typing start error: ${err}`),
@@ -290,7 +278,7 @@ async function handleInboundMessage(
     }
   }
 
-  let dispatchError: unknown = null;
+  let dispatchOk = true;
 
   // Dispatch reply
   await dispatchInboundReplyWithBase({
@@ -339,26 +327,28 @@ async function handleInboundMessage(
     },
     onRecordError: (err) => log?.error(`Session record error: ${err}`),
     onDispatchError: (err) => {
-      dispatchError = err;
+      dispatchOk = false;
       log?.error(`Dispatch error: ${err}`);
     },
   });
 
   // ----- Finalize ack reactions -----
   if (ackCfg.enabled) {
-    try {
-      // Remove the onStart reaction if it was applied
-      if (ackStartApplied && ackCfg.onStart) {
+    if (ackStartApplied && ackCfg.onStart) {
+      try {
         await client.removeReaction(msg.id, ackCfg.onStart);
+      } catch (err) {
+        log?.debug?.(`Ack reaction removal failed: ${err}`);
       }
+    }
 
-      // Add the appropriate terminal reaction
-      const terminalEmoji = dispatchError ? ackCfg.onError : ackCfg.onSuccess;
-      if (terminalEmoji) {
+    const terminalEmoji = dispatchOk ? ackCfg.onSuccess : ackCfg.onError;
+    if (terminalEmoji) {
+      try {
         await client.addReaction(msg.id, terminalEmoji);
+      } catch (err) {
+        log?.debug?.(`Ack terminal reaction failed: ${err}`);
       }
-    } catch (err) {
-      log?.debug?.(`Ack reaction finalization failed: ${err}`);
     }
   }
 }
