@@ -11,9 +11,9 @@ For details see:
 
 ## Repository Purpose
 
-A clean-room OpenClaw channel plugin for Zulip, built with the OpenClaw Plugin SDK. Replaces the stale community plugin (`FtlC-ian/openclaw-channel-zulip`).
+A clean-room OpenClaw channel plugin for Zulip, built with the OpenClaw Plugin SDK.
 
-**Primary goal:** Solid, maintained Zulip integration for OpenClaw — streams, topics, DMs, reactions, media, edits, unsend.
+**Primary goal:** Zulip integration for OpenClaw — streams, topics, DMs, reactions, media, edits, unsend.
 
 **Differentiator:** ACP topic bindings — bind ACP agent sessions to Zulip topics.
 

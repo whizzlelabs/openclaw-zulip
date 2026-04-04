@@ -2,9 +2,7 @@
 
 A clean-room [OpenClaw](https://github.com/openclaw/openclaw) channel plugin for [Zulip](https://zulip.com), built from scratch with the OpenClaw Plugin SDK.
 
-## Why
-
-The existing community plugin (`FtlC-ian/openclaw-channel-zulip`) is stale and lacks ACP topic binding support. This plugin provides:
+## Features
 
 - **Full Zulip messaging** — Streams, topics, DMs, reactions, media, edits, unsend
 - **ACP topic bindings** — Bind ACP agent sessions to specific Zulip topics
@@ -12,7 +10,6 @@ The existing community plugin (`FtlC-ian/openclaw-channel-zulip`) is stale and l
 - **Stream-level controls** — Per-stream config (require mention, enable/disable)
 - **Security** — DM policy enforcement, allow-from lists
 - **Actions** — Channel list, channel info, member info queries
-- **Active maintenance** — Under the `whizzlelabs` org
 
 ## Installation
 
