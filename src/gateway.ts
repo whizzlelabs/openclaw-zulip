@@ -237,7 +237,7 @@ async function handleInboundMessage(
     MessageSid: String(msg.id),
     ChatType: chatType,
     SenderName: senderName,
-    SenderId: senderId,
+    SenderId: senderEmail,
     SenderUsername: senderEmail,
     Timestamp: msg.timestamp * 1000,
     Provider: CHANNEL_ID,
