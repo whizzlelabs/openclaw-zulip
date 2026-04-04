@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveZulipAccount } from "./config.js";
+import { resolveZulipAccount, listZulipAccountIds } from "./config.js";
 import type { CoreConfig } from "./types.js";
 
 function makeConfig(overrides: Record<string, unknown> = {}): CoreConfig {
@@ -99,5 +99,74 @@ describe("resolveZulipAccount", () => {
     expect(account.serverUrl).toBe("");
     expect(account.email).toBe("");
     expect(account.apiKey).toBe("");
+  });
+});
+
+describe("listZulipAccountIds", () => {
+  it("returns default when no accounts map exists but base credentials are set", () => {
+    const cfg = {
+      channels: {
+        zulip: {
+          email: "bot@example.com",
+          apiKey: "key",
+        },
+      },
+    } as CoreConfig;
+
+    expect(listZulipAccountIds(cfg)).toEqual(["default"]);
+  });
+
+  it("returns default when accounts map is empty and base credentials are set", () => {
+    const cfg = {
+      channels: {
+        zulip: {
+          email: "bot@example.com",
+          apiKey: "key",
+          accounts: {},
+        },
+      },
+    } as CoreConfig;
+
+    expect(listZulipAccountIds(cfg)).toEqual(["default"]);
+  });
+
+  it("includes default alongside named accounts when base credentials exist", () => {
+    const cfg = {
+      channels: {
+        zulip: {
+          email: "bot@example.com",
+          apiKey: "key",
+          accounts: {
+            bot1: { apiKey: "k1" },
+            bot2: { apiKey: "k2" },
+          },
+        },
+      },
+    } as CoreConfig;
+
+    const ids = listZulipAccountIds(cfg);
+    expect(ids).toContain("default");
+    expect(ids).toContain("bot1");
+    expect(ids).toContain("bot2");
+    expect(ids).toHaveLength(3);
+  });
+
+  it("does not include default when no base credentials exist", () => {
+    const cfg = {
+      channels: {
+        zulip: {
+          accounts: {
+            bot1: { email: "b1@example.com", apiKey: "k1" },
+          },
+        },
+      },
+    } as CoreConfig;
+
+    expect(listZulipAccountIds(cfg)).toEqual(["bot1"]);
+  });
+
+  it("returns empty list when config has no section at all", () => {
+    const cfg = {} as CoreConfig;
+    expect(listZulipAccountIds(cfg)).toEqual([]);
   });
 });
