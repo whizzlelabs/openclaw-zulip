@@ -7,7 +7,16 @@ import { buildClient } from "./outbound.js";
 // Zulip message actions adapter
 // ---------------------------------------------------------------------------
 
+const SUPPORTED_ACTIONS = new Set([
+  "react", "edit", "unsend", "delete", "search", "topic-edit",
+  "upload-file", "download-file", "channel-list", "channel-info", "member-info",
+]);
+
 export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
+  supportsAction({ action }) {
+    return SUPPORTED_ACTIONS.has(action);
+  },
+
   describeMessageTool(_ctx) {
     return {
       actions: ["react", "edit", "unsend", "search", "topic-edit", "upload-file", "download-file", "channel-list", "channel-info", "member-info"],
