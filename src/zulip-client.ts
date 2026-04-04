@@ -44,6 +44,14 @@ export type ZulipSendMessageResult = {
   id: number;
 };
 
+export type ZulipSearchResult = {
+  messages: ZulipMessage[];
+};
+
+export type ZulipUploadResult = {
+  uri: string;
+};
+
 export class ZulipClient {
   private readonly baseUrl: string;
   private readonly authHeader: string;
@@ -96,6 +104,39 @@ export class ZulipClient {
       const retryAfter = Number(res.headers.get("retry-after") || "1");
       await new Promise((r) => setTimeout(r, retryAfter * 1000));
       return this.request(method, path, params, retryCount + 1);
+    }
+
+    const json = (await res.json()) as Record<string, unknown>;
+
+    if (json.result !== "success") {
+      const msg = typeof json.msg === "string" ? json.msg : JSON.stringify(json);
+      throw new Error(`Zulip API error (${path}): ${msg}`);
+    }
+
+    return json as T;
+  }
+
+  private async requestMultipart<T>(
+    method: string,
+    path: string,
+    formData: FormData,
+    retryCount = 0,
+  ): Promise<T> {
+    const url = new URL(`/api/v1${path}`, this.baseUrl);
+
+    const res = await fetch(url.toString(), {
+      method,
+      headers: { Authorization: this.authHeader },
+      body: formData,
+    });
+
+    if (res.status === 429) {
+      if (retryCount >= 3) {
+        throw new Error(`Zulip API rate limited after ${retryCount} retries (${path})`);
+      }
+      const retryAfter = Number(res.headers.get("retry-after") || "1");
+      await new Promise((r) => setTimeout(r, retryAfter * 1000));
+      return this.requestMultipart(method, path, formData, retryCount + 1);
     }
 
     const json = (await res.json()) as Record<string, unknown>;
@@ -209,5 +250,109 @@ export class ZulipClient {
       full_name: string;
     }>("GET", "/users/me");
     return { user_id: res.user_id, email: res.email, full_name: res.full_name };
+  }
+
+  // -------------------------------------------------------------------------
+  // Message actions
+  // -------------------------------------------------------------------------
+
+  async editMessage(messageId: number, content: string): Promise<void> {
+    await this.request("PATCH", `/messages/${messageId}`, { content });
+  }
+
+  async deleteMessage(messageId: number): Promise<void> {
+    await this.request("DELETE", `/messages/${messageId}`);
+  }
+
+  async addReaction(messageId: number, emojiName: string, emojiCode?: string, reactionType?: string): Promise<void> {
+    await this.request("POST", `/messages/${messageId}/reactions`, {
+      emoji_name: emojiName,
+      ...(emojiCode ? { emoji_code: emojiCode } : {}),
+      ...(reactionType ? { reaction_type: reactionType } : {}),
+    });
+  }
+
+  async removeReaction(messageId: number, emojiName: string, emojiCode?: string, reactionType?: string): Promise<void> {
+    await this.request("DELETE", `/messages/${messageId}/reactions`, {
+      emoji_name: emojiName,
+      ...(emojiCode ? { emoji_code: emojiCode } : {}),
+      ...(reactionType ? { reaction_type: reactionType } : {}),
+    });
+  }
+
+  async searchMessages(params: {
+    anchor: string | number;
+    numBefore: number;
+    numAfter: number;
+    narrow: Array<{ operator: string; operand: string }>;
+  }): Promise<ZulipMessage[]> {
+    const res = await this.request<{ result: string; messages: ZulipMessage[] }>(
+      "GET",
+      "/messages",
+      {
+        anchor: String(params.anchor),
+        num_before: params.numBefore,
+        num_after: params.numAfter,
+        narrow: JSON.stringify(params.narrow),
+      },
+    );
+    return res.messages;
+  }
+
+  async updateMessageTopic(
+    messageId: number,
+    topic: string,
+    propagateMode = "change_all",
+    streamId?: number,
+  ): Promise<void> {
+    await this.request("PATCH", `/messages/${messageId}`, {
+      topic,
+      propagate_mode: propagateMode,
+      ...(streamId !== undefined ? { stream_id: streamId } : {}),
+    });
+  }
+
+  async sendTypingNotification(params: {
+    op: "start" | "stop";
+    type: "direct" | "stream";
+    to?: number[];
+    streamId?: number;
+    topic?: string;
+  }): Promise<void> {
+    const body: Record<string, string> = {
+      op: params.op,
+      type: params.type,
+    };
+    if (params.to) body.to = JSON.stringify(params.to);
+    if (params.streamId !== undefined) body.stream_id = String(params.streamId);
+    if (params.topic) body.topic = params.topic;
+    await this.request("POST", "/typing", body);
+  }
+
+  // -------------------------------------------------------------------------
+  // File upload / download
+  // -------------------------------------------------------------------------
+
+  async uploadFile(filename: string, buffer: Buffer, mimeType = "application/octet-stream"): Promise<ZulipUploadResult> {
+    const form = new FormData();
+    form.append("filename", new Blob([new Uint8Array(buffer)], { type: mimeType }), filename);
+    const res = await this.requestMultipart<{ result: string; uri: string }>(
+      "POST",
+      "/user_uploads",
+      form,
+    );
+    return { uri: res.uri };
+  }
+
+  async downloadFile(url: string): Promise<Buffer> {
+    // url may be relative (e.g. /user_uploads/...) — prefix with server base
+    const fullUrl = url.startsWith("http") ? url : `${this.baseUrl}${url}`;
+    const res = await fetch(fullUrl, {
+      headers: { Authorization: this.authHeader },
+    });
+    if (!res.ok) {
+      throw new Error(`Zulip download failed (${res.status}): ${url}`);
+    }
+    return Buffer.from(await res.arrayBuffer());
   }
 }

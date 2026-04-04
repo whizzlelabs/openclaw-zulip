@@ -8,6 +8,7 @@ import { zulipGatewayAdapter } from "./gateway.js";
 import { zulipOutboundAdapter } from "./outbound.js";
 import { zulipThreadingAdapter } from "./threading.js";
 import { zulipMessagingAdapter } from "./messaging.js";
+import { zulipActionsAdapter } from "./actions.js";
 
 export const zulipPlugin: ChannelPlugin<ZulipResolvedAccount> = createChatChannelPlugin({
   base: {
@@ -21,12 +22,12 @@ export const zulipPlugin: ChannelPlugin<ZulipResolvedAccount> = createChatChanne
     },
     capabilities: {
       chatTypes: ["direct", "group", "thread"],
-      reactions: false,
-      edit: false,
-      unsend: false,
+      reactions: true,
+      edit: true,
+      unsend: true,
       reply: true,
       threads: true,
-      media: false,
+      media: true,
       nativeCommands: false,
       polls: false,
       effects: false,
@@ -37,6 +38,7 @@ export const zulipPlugin: ChannelPlugin<ZulipResolvedAccount> = createChatChanne
     setup: zulipSetupAdapter,
     gateway: zulipGatewayAdapter,
     messaging: zulipMessagingAdapter,
+    actions: zulipActionsAdapter,
     reload: {
       configPrefixes: ["channels.zulip"],
     },
