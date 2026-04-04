@@ -4,6 +4,9 @@ import {
   registerSessionBindingAdapter,
   unregisterSessionBindingAdapter,
 } from "openclaw/plugin-sdk/conversation-runtime";
+import {
+  resolveSenderCommandAuthorization,
+} from "openclaw/plugin-sdk/command-auth";
 import type { ZulipResolvedAccount } from "./types.js";
 import { getZulipSection } from "./types.js";
 import { ZulipClient, type ZulipMessage } from "./zulip-client.js";
@@ -199,6 +202,27 @@ async function handleInboundMessage(
     ? `#${msg.display_recipient}`
     : undefined;
 
+  // Resolve command authorization from allowlists
+  const { commandAuthorized } = await resolveSenderCommandAuthorization({
+    cfg,
+    rawBody: msg.content,
+    isGroup,
+    dmPolicy: account.dmPolicy,
+    configuredAllowFrom: account.allowFrom.map(String),
+    senderId: senderEmail,
+    isSenderAllowed: (sid, allowFrom) =>
+      allowFrom.includes(sid) || allowFrom.includes(senderId) || allowFrom.includes("*"),
+    readAllowFromStore: () =>
+      ctx.channelRuntime!.pairing.readAllowFromStore({
+        channel: CHANNEL_ID,
+        accountId: account.accountId,
+      }),
+    shouldComputeCommandAuthorized:
+      ctx.channelRuntime.commands.shouldComputeCommandAuthorized,
+    resolveCommandAuthorizedFromAuthorizers:
+      ctx.channelRuntime.commands.resolveCommandAuthorizedFromAuthorizers,
+  });
+
   const ctxPayload = ctx.channelRuntime.reply.finalizeInboundContext({
     Body: msg.content,
     From: senderEmail,
@@ -218,7 +242,7 @@ async function handleInboundMessage(
     GroupChannel: groupChannel,
     ThreadLabel: topic,
     MessageThreadId: topic,
-    CommandAuthorized: false,
+    CommandAuthorized: commandAuthorized ?? false,
   });
 
   // ----- Typing indicators -----
