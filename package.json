@@ -1,6 +1,6 @@
 {
   "name": "openclaw-zulip",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "OpenClaw channel plugin for Zulip — clean-room implementation with ACP topic bindings",
   "license": "MIT",
   "author": "whizzlefred",
