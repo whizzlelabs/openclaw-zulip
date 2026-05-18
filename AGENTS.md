@@ -164,6 +164,10 @@ chore(repo): add vitest config
 - Use `.env.example` with placeholder values
 - Reference secrets via OpenClaw config, not hardcoded
 
+## Skills
+
+OpenCode skills may be available locally to assist with testing and debugging a live instance. If present, load them via the `skill` tool. Skills are machine-specific and not committed to this repo (`.opencode/skills/` is gitignored).
+
 ## Reference
 
 - **Existing plugin source:** `~/.openclaw/extensions/zulip/` (if installed)
