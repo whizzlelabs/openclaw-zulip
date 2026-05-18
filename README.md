@@ -80,6 +80,23 @@ channels:
 | Native commands | No |
 | Polls | No |
 
+## Related X/Twitter workflows
+
+Zulip stays responsible for private DMs, streams, topics, and ACP topic bindings.
+When the same OpenClaw workspace also needs public X/Twitter context, install
+[TweetClaw](https://github.com/Xquik-dev/tweetclaw) as a separate plugin:
+
+```bash
+openclaw plugins install @xquik/tweetclaw
+```
+
+Use TweetClaw for search tweets, search tweet replies, scrape tweets, follower
+export, user lookup, media upload, media download, direct messages, monitor
+tweets, webhooks, giveaway draws, and approval-reviewed post tweets or post
+tweet replies. Route summaries, approval requests, and webhook results into
+Zulip streams or topics through this channel plugin while keeping Zulip and
+Xquik config settings separate in OpenClaw.
+
 ## Migrating from openclaw-channel-zulip
 
 If you're replacing the old `openclaw-channel-zulip` plugin, note these config changes:
