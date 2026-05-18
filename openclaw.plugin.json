@@ -3,7 +3,6 @@
   "channels": ["zulip"],
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "serverUrl": {
         "type": "string",
@@ -36,7 +35,6 @@
       "description": "Zulip bot or user account",
       "schema": {
         "type": "object",
-        "additionalProperties": false,
         "properties": {
           "serverUrl": {
             "type": "string",
