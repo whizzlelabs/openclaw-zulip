@@ -1,4 +1,3 @@
-import { Type } from "@sinclair/typebox";
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
 import type { ChannelMessageActionContext } from "openclaw/plugin-sdk/core";
 import { buildClient } from "./outbound.js";
@@ -23,38 +22,16 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
       schema: {
         visibility: "current-channel",
         properties: {
-          zulip_message_id: Type.Optional(
-            Type.Number({ description: "Zulip message ID to act on (required for react, edit, unsend, topic-edit)" }),
-          ),
-          zulip_emoji: Type.Optional(
-            Type.String({ description: "Emoji name for the react action (e.g. 'thumbs_up', '+1')" }),
-          ),
-          zulip_content: Type.Optional(
-            Type.String({ description: "New message content for the edit action" }),
-          ),
-          zulip_topic: Type.Optional(
-            Type.String({ description: "Topic name for topic-edit or search narrow" }),
-          ),
-          zulip_stream_id: Type.Optional(
-            Type.Number({ description: "Stream ID for topic-edit or search narrow" }),
-          ),
-          zulip_query: Type.Optional(
-            Type.String({ description: "Full-text search query for the search action" }),
-          ),
-          zulip_propagate_mode: Type.Optional(
-            Type.String({
-              description: "Topic propagation mode for topic-edit: 'change_one', 'change_later', or 'change_all' (default)",
-            }),
-          ),
-          zulip_file_path: Type.Optional(
-            Type.String({ description: "Local file path for upload-file, or Zulip file URI for download-file" }),
-          ),
-          zulip_limit: Type.Optional(
-            Type.Number({ description: "Maximum number of messages to return from search (default 10)" }),
-          ),
-          zulip_user_id: Type.Optional(
-            Type.Number({ description: "Zulip user ID for the member-info action" }),
-          ),
+          zulip_message_id: { type: "number", description: "Zulip message ID to act on (required for react, edit, unsend, topic-edit)" },
+          zulip_emoji: { type: "string", description: "Emoji name for the react action (e.g. 'thumbs_up', '+1')" },
+          zulip_content: { type: "string", description: "New message content for the edit action" },
+          zulip_topic: { type: "string", description: "Topic name for topic-edit or search narrow" },
+          zulip_stream_id: { type: "number", description: "Stream ID for topic-edit or search narrow" },
+          zulip_query: { type: "string", description: "Full-text search query for the search action" },
+          zulip_propagate_mode: { type: "string", description: "Topic propagation mode for topic-edit: 'change_one', 'change_later', or 'change_all' (default)" },
+          zulip_file_path: { type: "string", description: "Local file path for upload-file, or Zulip file URI for download-file" },
+          zulip_limit: { type: "number", description: "Maximum number of messages to return from search (default 10)" },
+          zulip_user_id: { type: "number", description: "Zulip user ID for the member-info action" },
         },
       },
     };
