@@ -186,6 +186,26 @@ async function handleInboundMessage(
     chatType = "direct";
   }
 
+  // Hard-enforce the DM allowlist: drop messages from unauthorized senders
+  // before dispatching to the agent. For dmPolicy "allowlist" the configured
+  // allowFrom is authoritative (the pairing store is intentionally not
+  // consulted, matching the SDK's own ingress behavior). Other policies keep
+  // their existing soft behavior (the agent runs and decides via
+  // CommandAuthorized).
+  if (!isGroup && account.dmPolicy === "allowlist") {
+    const allowFrom = account.allowFrom.map(String);
+    const allowed =
+      allowFrom.includes(msg.sender_email) ||
+      allowFrom.includes(String(msg.sender_id)) ||
+      allowFrom.includes("*");
+    if (!allowed) {
+      log?.info(
+        `Dropping unauthorized DM from ${msg.sender_email} (id=${msg.sender_id}); dmPolicy=allowlist`,
+      );
+      return;
+    }
+  }
+
   // Touch any active binding for this conversation so idle timeout resets
   touchZulipBindingByConversation(account.accountId, peerId);
 
