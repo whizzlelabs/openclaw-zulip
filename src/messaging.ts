@@ -55,10 +55,19 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
     hint: 'Use "stream:<name_or_id>/<topic>" for streams or "dm:<user_id>" / "user:<email>" for DMs.',
 
     looksLikeId(raw: string) {
-      return raw.startsWith("stream:") || raw.startsWith("dm:") || raw.startsWith("user:");
+      if (
+        raw.startsWith("stream:") ||
+        raw.startsWith("dm:") ||
+        raw.startsWith("user:")
+      ) {
+        return true;
+      }
+      // Bare conversation ids emitted by this plugin are ids too:
+      // "<stream_id>" / "<stream_id>/<topic>" for streams, "<user_id>" for DMs.
+      return isNumericHead(raw);
     },
 
-    async resolveTarget({ cfg, accountId, input }: {
+    async resolveTarget({ cfg, accountId, input, preferredKind }: {
       cfg: OpenClawConfig;
       accountId?: string | null;
       input: string;
@@ -73,51 +82,100 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
 
       // Stream targets
       if (input.startsWith("stream:")) {
-        const rest = input.slice(7);
-        const slashIdx = rest.indexOf("/");
-        const colonIdx = rest.indexOf(":");
-        const sepIdx = slashIdx !== -1 ? slashIdx : colonIdx;
-        const streamPart = sepIdx === -1 ? rest : rest.slice(0, sepIdx);
-        const topicPart = sepIdx === -1 ? undefined : rest.slice(sepIdx + 1);
+        const { streamPart, topicPart } = splitStreamTopic(input.slice(7));
+        const resolved = await lookupStream(cfg, accountId, streamPart, topicPart);
+        if (resolved) return resolved;
+        // Numeric ids fall back to the raw id; unknown names stay unresolved.
+        if (isNumeric(streamPart)) return numericStreamFallback(streamPart, topicPart);
+        return null;
+      }
 
-        // If streamPart is numeric, resolve to stream name via API
-        const asNum = Number(streamPart);
-        if (Number.isFinite(asNum) && String(asNum) === streamPart) {
-          const client = buildClient(cfg, accountId);
-          try {
-            const stream = await client.getStreamById(asNum);
-            const to = topicPart ? `${stream.name}/${topicPart}` : stream.name;
-            return {
-              to,
-              kind: "channel" as const,
-              display: topicPart ? `#${stream.name} > ${topicPart}` : `#${stream.name}`,
-              source: "directory" as const,
-            };
-          } catch {
-            // Fall back to numeric ID if lookup fails
-            const to = topicPart ? `${streamPart}/${topicPart}` : streamPart;
-            return { to, kind: "channel" as const, source: "normalized" as const };
-          }
+      // Bare conversation ids (no scheme prefix). These surface as outbound
+      // targets when the agent replies to / acts on the current conversation
+      // via the message or react tool: streams are "<stream_id>[/<topic>]" and
+      // DMs are "<user_id>". A bare numeric is ambiguous (a stream id and a
+      // user id can collide), so honour preferredKind: only treat it as a DM
+      // when the runtime hints "user" and there is no topic (DMs have no
+      // topics). Otherwise resolve it as a stream id.
+      const slashIdx = input.indexOf("/");
+      const head = slashIdx === -1 ? input : input.slice(0, slashIdx);
+      const topicPart = slashIdx === -1 ? undefined : input.slice(slashIdx + 1);
+      if (isNumeric(head)) {
+        if (preferredKind === "user" && topicPart === undefined) {
+          return { to: head, kind: "user" as const, source: "normalized" as const };
         }
-
-        // Resolve stream name → verify it exists via Zulip API
-        const client = buildClient(cfg, accountId);
-        const streams = await client.getStreams();
-        const match = streams.find(
-          (s) => s.name.toLowerCase() === streamPart.toLowerCase(),
-        );
-        if (!match) return null;
-
-        const to = topicPart ? `${match.name}/${topicPart}` : match.name;
-        return {
-          to,
-          kind: "channel" as const,
-          display: topicPart ? `#${match.name} > ${topicPart}` : `#${match.name}`,
-          source: "directory" as const,
-        };
+        const resolved = await lookupStream(cfg, accountId, head, topicPart);
+        if (resolved) return resolved;
+        if (preferredKind === "user") {
+          return { to: head, kind: "user" as const, source: "normalized" as const };
+        }
+        return numericStreamFallback(head, topicPart);
       }
 
       return null;
     },
   },
 };
+
+// ---------------------------------------------------------------------------
+// Target-resolution helpers
+// ---------------------------------------------------------------------------
+
+function isNumeric(value: string): boolean {
+  return /^\d+$/.test(value);
+}
+
+// True when the leading segment (before any "/<topic>") is a bare numeric id.
+function isNumericHead(raw: string): boolean {
+  const slashIdx = raw.indexOf("/");
+  return isNumeric(slashIdx === -1 ? raw : raw.slice(0, slashIdx));
+}
+
+// Split a "stream:" payload into stream and topic parts, accepting both
+// "name/topic" and "name:topic" separators (slash wins when both appear).
+function splitStreamTopic(rest: string): { streamPart: string; topicPart?: string } {
+  const slashIdx = rest.indexOf("/");
+  const colonIdx = rest.indexOf(":");
+  const sepIdx = slashIdx !== -1 ? slashIdx : colonIdx;
+  if (sepIdx === -1) return { streamPart: rest };
+  return { streamPart: rest.slice(0, sepIdx), topicPart: rest.slice(sepIdx + 1) };
+}
+
+// Resolve a stream by numeric id or name via the Zulip API. Returns a
+// directory-sourced channel target, or null when the stream cannot be found.
+async function lookupStream(
+  cfg: OpenClawConfig,
+  accountId: string | null | undefined,
+  streamPart: string,
+  topicPart: string | undefined,
+) {
+  const client = buildClient(cfg, accountId);
+  if (isNumeric(streamPart)) {
+    try {
+      const stream = await client.getStreamById(Number(streamPart));
+      return channelTarget(stream.name, topicPart);
+    } catch {
+      return null;
+    }
+  }
+  const streams = await client.getStreams();
+  const match = streams.find((s) => s.name.toLowerCase() === streamPart.toLowerCase());
+  return match ? channelTarget(match.name, topicPart) : null;
+}
+
+function channelTarget(name: string, topicPart: string | undefined) {
+  return {
+    to: topicPart ? `${name}/${topicPart}` : name,
+    kind: "channel" as const,
+    display: topicPart ? `#${name} > ${topicPart}` : `#${name}`,
+    source: "directory" as const,
+  };
+}
+
+function numericStreamFallback(streamPart: string, topicPart: string | undefined) {
+  return {
+    to: topicPart ? `${streamPart}/${topicPart}` : streamPart,
+    kind: "channel" as const,
+    source: "normalized" as const,
+  };
+}
