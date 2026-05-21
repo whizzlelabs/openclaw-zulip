@@ -67,13 +67,16 @@ export class ZulipClient {
     path: string,
     params?: Record<string, string | number | boolean | undefined>,
     retryCount = 0,
+    signal?: AbortSignal,
   ): Promise<T> {
     const url = new URL(`/api/v1${path}`, this.baseUrl);
 
     const init: RequestInit = {
       method,
+      signal,
       headers: {
         Authorization: this.authHeader,
+        "Accept-Encoding": "identity",
       },
     };
 
@@ -99,7 +102,7 @@ export class ZulipClient {
       }
       const retryAfter = Number(res.headers.get("retry-after") || "1");
       await new Promise((r) => setTimeout(r, retryAfter * 1000));
-      return this.request(method, path, params, retryCount + 1);
+      return this.request(method, path, params, retryCount + 1, signal);
     }
 
     const json = (await res.json()) as Record<string, unknown>;
@@ -198,6 +201,9 @@ export class ZulipClient {
     lastEventId: number;
     dontBlock?: boolean;
   }): Promise<ZulipEvent[]> {
+    // Use a 120s timeout for long-poll calls so a stale connection doesn't
+    // block the poll loop forever (Zulip's server-side timeout is ~90s).
+    const signal = params.dontBlock ? undefined : AbortSignal.timeout(120_000);
     const res = await this.request<{ result: string; events: ZulipEvent[] }>(
       "GET",
       "/events",
@@ -206,6 +212,8 @@ export class ZulipClient {
         last_event_id: params.lastEventId,
         dont_block: params.dontBlock ? "true" : undefined,
       },
+      0,
+      signal,
     );
     return res.events;
   }
