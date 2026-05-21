@@ -128,6 +128,57 @@ describe("ZulipClient", () => {
       expect(url).toContain("queue_id=q-123");
       expect(url).toContain("last_event_id=-1");
     });
+
+    it("sends Accept-Encoding: identity on the long-poll", async () => {
+      const fetchSpy = mockFetch({ result: "success", events: [] });
+      globalThis.fetch = fetchSpy;
+
+      const client = new ZulipClient(config);
+      await client.getEvents({ queueId: "q-123", lastEventId: -1 });
+
+      const [, init] = fetchSpy.mock.calls[0];
+      expect(init.headers["Accept-Encoding"]).toBe("identity");
+    });
+
+    it("attaches an abort signal to a blocking poll", async () => {
+      const fetchSpy = mockFetch({ result: "success", events: [] });
+      globalThis.fetch = fetchSpy;
+
+      const client = new ZulipClient(config);
+      await client.getEvents({ queueId: "q-123", lastEventId: -1 });
+
+      const [, init] = fetchSpy.mock.calls[0];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("aborts the poll when the caller's abortSignal is aborted", async () => {
+      const fetchSpy = mockFetch({ result: "success", events: [] });
+      globalThis.fetch = fetchSpy;
+
+      const client = new ZulipClient(config);
+      await client.getEvents({
+        queueId: "q-123",
+        lastEventId: -1,
+        abortSignal: AbortSignal.abort(),
+      });
+
+      const [, init] = fetchSpy.mock.calls[0];
+      // AbortSignal.any over an already-aborted caller signal is itself aborted.
+      expect(init.signal.aborted).toBe(true);
+    });
+  });
+
+  describe("compression", () => {
+    it("does not disable gzip on normal API calls", async () => {
+      const fetchSpy = mockFetch({ result: "success", id: 1 });
+      globalThis.fetch = fetchSpy;
+
+      const client = new ZulipClient(config);
+      await client.sendMessage({ type: "stream", to: "general", topic: "t", content: "x" });
+
+      const [, init] = fetchSpy.mock.calls[0];
+      expect(init.headers["Accept-Encoding"]).toBeUndefined();
+    });
   });
 
   describe("deleteEventQueue", () => {
