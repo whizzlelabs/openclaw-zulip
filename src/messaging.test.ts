@@ -241,6 +241,23 @@ describe("zulipMessagingAdapter", () => {
         });
       });
 
+      // Collision case: a bare numeric with no preferredKind hint is ambiguous
+      // (a stream id and a user id can share a value). The resolver deliberately
+      // treats it as a stream id — pin that so the behavior can't drift silently.
+      it("resolves an unhinted bare numeric id as a stream (no preferredKind)", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => ({ stream_id: 9, name: "general", description: "", invite_only: false }),
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "9", normalized: "9",
+        });
+        expect(result).toEqual({
+          to: "general", kind: "channel", display: "#general", source: "directory",
+        });
+      });
+
       it("resolves a bare numeric stream id with topic", async () => {
         const { buildClient } = await import("./outbound.js");
         vi.mocked(buildClient).mockReturnValue({

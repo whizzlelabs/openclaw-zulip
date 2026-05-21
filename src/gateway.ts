@@ -64,6 +64,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
         events = await client.getEvents({
           queueId,
           lastEventId,
+          abortSignal,
         });
       } catch (err) {
         if (abortSignal.aborted) break;
@@ -215,6 +216,9 @@ async function handleInboundMessage(
     return;
   }
 
+  // TODO: the SDK does not yet export a typed surface for channelRuntime, so we
+  // cast to `any` and lose type-checking across the runtime.* calls below. Drop
+  // this cast once openclaw publishes types for ChannelGatewayContext.channelRuntime.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const runtime = ctx.channelRuntime as any;
 
