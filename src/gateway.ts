@@ -1,5 +1,6 @@
 import type { ChannelPlugin, ChannelGatewayContext } from "openclaw/plugin-sdk";
-import { createChannelReplyPipeline, dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/irc";
+import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
+import { dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import {
   registerSessionBindingAdapter,
   unregisterSessionBindingAdapter,
@@ -53,6 +54,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
       lastConnectedAt: Date.now(),
     });
 
+    let queueId = queue.queue_id;
     let lastEventId = queue.last_event_id;
 
     // Poll loop
@@ -60,14 +62,32 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
       let events;
       try {
         events = await client.getEvents({
-          queueId: queue.queue_id,
+          queueId,
           lastEventId,
+          abortSignal,
         });
       } catch (err) {
         if (abortSignal.aborted) break;
-        log?.error(`Event poll error: ${err}`);
-        // Back off before retry
-        await new Promise((r) => setTimeout(r, 5000));
+        const msg = String(err);
+        // Re-register queue if it expired or timed out
+        if (msg.includes("BAD_EVENT_QUEUE_ID") || msg.includes("TimeoutError") || msg.includes("timed out")) {
+          log?.warn(`Event queue stale or timed out (${msg}), re-registering...`);
+          try {
+            const newQueue = await client.registerEventQueue({
+              eventTypes: ["message"],
+              allPublicStreams: account.mode === "bot",
+            });
+            queueId = newQueue.queue_id;
+            lastEventId = newQueue.last_event_id;
+            log?.info(`Event queue re-registered: ${queueId}`);
+          } catch (regErr) {
+            log?.error(`Failed to re-register event queue: ${regErr}`);
+            await new Promise((r) => setTimeout(r, 5000));
+          }
+        } else {
+          log?.error(`Event poll error: ${err}`);
+          await new Promise((r) => setTimeout(r, 5000));
+        }
         continue;
       }
 
@@ -93,7 +113,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
 
     // Cleanup — deregister queue and binding adapter
     try {
-      await client.deleteEventQueue(queue.queue_id);
+      await client.deleteEventQueue(queueId);
       log?.info("Event queue deregistered.");
     } catch {
       // Queue may already be expired
@@ -167,6 +187,26 @@ async function handleInboundMessage(
     chatType = "direct";
   }
 
+  // Hard-enforce the DM allowlist: drop messages from unauthorized senders
+  // before dispatching to the agent. For dmPolicy "allowlist" the configured
+  // allowFrom is authoritative (the pairing store is intentionally not
+  // consulted, matching the SDK's own ingress behavior). Other policies keep
+  // their existing soft behavior (the agent runs and decides via
+  // CommandAuthorized).
+  if (!isGroup && account.dmPolicy === "allowlist") {
+    const allowFrom = account.allowFrom.map(String);
+    const allowed =
+      allowFrom.includes(msg.sender_email) ||
+      allowFrom.includes(String(msg.sender_id)) ||
+      allowFrom.includes("*");
+    if (!allowed) {
+      log?.info(
+        `Dropping unauthorized DM from ${msg.sender_email} (id=${msg.sender_id}); dmPolicy=allowlist`,
+      );
+      return;
+    }
+  }
+
   // Touch any active binding for this conversation so idle timeout resets
   touchZulipBindingByConversation(account.accountId, peerId);
 
@@ -176,7 +216,13 @@ async function handleInboundMessage(
     return;
   }
 
-  const route = ctx.channelRuntime.routing.resolveAgentRoute({
+  // TODO: the SDK does not yet export a typed surface for channelRuntime, so we
+  // cast to `any` and lose type-checking across the runtime.* calls below. Drop
+  // this cast once openclaw publishes types for ChannelGatewayContext.channelRuntime.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const runtime = ctx.channelRuntime as any;
+
+  const route = runtime.routing.resolveAgentRoute({
     cfg,
     channel: CHANNEL_ID,
     accountId: account.accountId,
@@ -186,7 +232,7 @@ async function handleInboundMessage(
       : undefined,
   });
 
-  const storePath = ctx.channelRuntime.session.resolveStorePath(undefined, {
+  const storePath = runtime.session.resolveStorePath(undefined, {
     agentId: route.agentId,
   });
 
@@ -213,17 +259,17 @@ async function handleInboundMessage(
     isSenderAllowed: (sid, allowFrom) =>
       allowFrom.includes(sid) || allowFrom.includes(String(msg.sender_id)) || allowFrom.includes("*"),
     readAllowFromStore: () =>
-      ctx.channelRuntime!.pairing.readAllowFromStore({
+      runtime.pairing.readAllowFromStore({
         channel: CHANNEL_ID,
         accountId: account.accountId,
       }),
     shouldComputeCommandAuthorized:
-      ctx.channelRuntime.commands.shouldComputeCommandAuthorized,
+      runtime.commands.shouldComputeCommandAuthorized,
     resolveCommandAuthorizedFromAuthorizers:
-      ctx.channelRuntime.commands.resolveCommandAuthorizedFromAuthorizers,
+      runtime.commands.resolveCommandAuthorizedFromAuthorizers,
   });
 
-  const ctxPayload = ctx.channelRuntime.reply.finalizeInboundContext({
+  const ctxPayload = runtime.reply.finalizeInboundContext({
     Body: msg.content,
     From: senderEmail,
     To: to,
@@ -315,11 +361,11 @@ async function handleInboundMessage(
     core: {
       channel: {
         session: {
-          recordInboundSession: ctx.channelRuntime.session.recordInboundSession,
+          recordInboundSession: runtime.session.recordInboundSession,
         },
         reply: {
           dispatchReplyWithBufferedBlockDispatcher:
-            ctx.channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher,
+            runtime.reply.dispatchReplyWithBufferedBlockDispatcher,
         },
       },
     },

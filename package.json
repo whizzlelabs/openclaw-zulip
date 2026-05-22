@@ -1,6 +1,6 @@
 {
   "name": "openclaw-zulip",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "OpenClaw channel plugin for Zulip — clean-room implementation with ACP topic bindings",
   "license": "MIT",
   "author": "whizzlefred",
@@ -48,11 +48,14 @@
     "@typescript-eslint/parser": "^8.58.0",
     "eslint": "^10.2.0",
     "husky": "^9.1.7",
-    "openclaw": "^2026.3.28",
+    "openclaw": "2026.5.12",
     "typescript": "^5.7.0",
     "vitest": "^4.1.2"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.49"
+  },
+  "peerDependencies": {
+    "openclaw": "^2026.5.12"
   }
 }

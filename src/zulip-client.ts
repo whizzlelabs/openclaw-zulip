@@ -66,16 +66,17 @@ export class ZulipClient {
     method: string,
     path: string,
     params?: Record<string, string | number | boolean | undefined>,
-    retryCount = 0,
+    opts: { retryCount?: number; signal?: AbortSignal; identityEncoding?: boolean } = {},
   ): Promise<T> {
+    const { retryCount = 0, signal, identityEncoding = false } = opts;
     const url = new URL(`/api/v1${path}`, this.baseUrl);
 
-    const init: RequestInit = {
-      method,
-      headers: {
-        Authorization: this.authHeader,
-      },
-    };
+    const headers: Record<string, string> = { Authorization: this.authHeader };
+    // Disable gzip only for the long-poll, where a compression buffer can delay
+    // delivery of a single trickled event; normal API calls keep gzip.
+    if (identityEncoding) headers["Accept-Encoding"] = "identity";
+
+    const init: RequestInit = { method, signal, headers };
 
     if (method === "GET" && params) {
       for (const [k, v] of Object.entries(params)) {
@@ -99,7 +100,7 @@ export class ZulipClient {
       }
       const retryAfter = Number(res.headers.get("retry-after") || "1");
       await new Promise((r) => setTimeout(r, retryAfter * 1000));
-      return this.request(method, path, params, retryCount + 1);
+      return this.request(method, path, params, { retryCount: retryCount + 1, signal, identityEncoding });
     }
 
     const json = (await res.json()) as Record<string, unknown>;
@@ -197,7 +198,21 @@ export class ZulipClient {
     queueId: string;
     lastEventId: number;
     dontBlock?: boolean;
+    abortSignal?: AbortSignal;
   }): Promise<ZulipEvent[]> {
+    // Long-poll calls get a 120s timeout so a stale connection can't block the
+    // poll loop forever (Zulip's server-side timeout is ~90s), combined with the
+    // caller's abort signal so shutdown aborts an in-flight poll immediately
+    // instead of waiting out the timeout.
+    let signal: AbortSignal | undefined;
+    if (!params.dontBlock) {
+      const timeout = AbortSignal.timeout(120_000);
+      signal = params.abortSignal
+        ? AbortSignal.any([params.abortSignal, timeout])
+        : timeout;
+    } else {
+      signal = params.abortSignal;
+    }
     const res = await this.request<{ result: string; events: ZulipEvent[] }>(
       "GET",
       "/events",
@@ -206,6 +221,7 @@ export class ZulipClient {
         last_event_id: params.lastEventId,
         dont_block: params.dontBlock ? "true" : undefined,
       },
+      { signal, identityEncoding: true },
     );
     return res.events;
   }

@@ -132,6 +132,15 @@ describe("zulipMessagingAdapter", () => {
       it("rejects unknown prefix", () => {
         expect(resolver.looksLikeId!("foo:bar")).toBe(false);
       });
+      it("recognizes a bare numeric conversation id", () => {
+        expect(resolver.looksLikeId!("7")).toBe(true);
+      });
+      it("recognizes a bare numeric stream id with topic", () => {
+        expect(resolver.looksLikeId!("7/general chat")).toBe(true);
+      });
+      it("rejects a bare non-numeric token", () => {
+        expect(resolver.looksLikeId!("general")).toBe(false);
+      });
     });
 
     describe("resolveTarget", () => {
@@ -212,6 +221,79 @@ describe("zulipMessagingAdapter", () => {
       it("returns null for unknown prefix", async () => {
         const result = await resolver.resolveTarget!({
           cfg: baseCfg, input: "unknown:123", normalized: "unknown:123",
+        });
+        expect(result).toBeNull();
+      });
+
+      // Bare conversation ids (no scheme prefix) — the format the plugin's own
+      // session/conversation ids use, which the agent passes back as a target.
+      it("resolves a bare numeric stream id (preferredKind group) via API", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => ({ stream_id: 7, name: "Jeeves", description: "", invite_only: false }),
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "7", normalized: "7", preferredKind: "group",
+        } as any);
+        expect(result).toEqual({
+          to: "Jeeves", kind: "channel", display: "#Jeeves", source: "directory",
+        });
+      });
+
+      // Collision case: a bare numeric with no preferredKind hint is ambiguous
+      // (a stream id and a user id can share a value). The resolver deliberately
+      // treats it as a stream id — pin that so the behavior can't drift silently.
+      it("resolves an unhinted bare numeric id as a stream (no preferredKind)", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => ({ stream_id: 9, name: "general", description: "", invite_only: false }),
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "9", normalized: "9",
+        });
+        expect(result).toEqual({
+          to: "general", kind: "channel", display: "#general", source: "directory",
+        });
+      });
+
+      it("resolves a bare numeric stream id with topic", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => ({ stream_id: 3, name: "general", description: "", invite_only: false }),
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "3/daily", normalized: "3/daily",
+        });
+        expect(result).toEqual({
+          to: "general/daily", kind: "channel", display: "#general > daily", source: "directory",
+        });
+      });
+
+      it("resolves a bare user id as a DM when preferredKind is user", async () => {
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "9", normalized: "9", preferredKind: "user",
+        } as any);
+        expect(result).toEqual({ to: "9", kind: "user", source: "normalized" });
+      });
+
+      it("falls back to a DM for an unknown bare id when preferredKind is user", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => { throw new Error("not found"); },
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "999", normalized: "999", preferredKind: "user",
+        } as any);
+        expect(result).toEqual({ to: "999", kind: "user", source: "normalized" });
+      });
+
+      it("returns null for a bare non-numeric token", async () => {
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "general", normalized: "general",
         });
         expect(result).toBeNull();
       });
