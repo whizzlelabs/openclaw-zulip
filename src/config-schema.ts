@@ -25,7 +25,9 @@ const accountSchema = z.object({
   serverUrl: z.string().optional(),
   email: z.string().optional(),
   apiKey: z.string().optional(),
-  replyToMode: z.string().optional(),
+  // threading.ts honours exactly these three and silently falls back to "all";
+  // declaring the enum surfaces a typo at validation instead of at runtime.
+  replyToMode: z.enum(["off", "first", "all"]).optional(),
   streams: z.record(z.string(), streamConfigSchema).optional(),
   // Account-level DM controls — these are the fields the adapters actually read
   // (see security.ts and allowlist.ts). Keep them in sync with ZulipAccountConfig.

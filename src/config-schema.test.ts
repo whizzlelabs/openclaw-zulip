@@ -67,6 +67,16 @@ describe("zulipConfigSchema", () => {
     expect(parsed.dm).toEqual({ policy: "allowlist", allowFrom: ["someone@example.com"] });
   });
 
+  it("accepts every replyToMode value threading.ts honours", () => {
+    for (const mode of ["off", "first", "all"]) {
+      expect(parseSection({ replyToMode: mode }).replyToMode).toBe(mode);
+    }
+  });
+
+  it("rejects an unknown replyToMode", () => {
+    expect(zulipConfigSchema.runtime.safeParse({ replyToMode: "nonsense" }).success).toBe(false);
+  });
+
   it("preserves replyToMode and per-stream config", () => {
     const parsed = parseSection({
       replyToMode: "first",
