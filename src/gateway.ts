@@ -149,14 +149,13 @@ type AckReactionsConfig = {
 };
 
 function resolveAckReactions(cfg: import("openclaw/plugin-sdk/core").OpenClawConfig): AckReactionsConfig {
-  const section = getZulipSection(cfg) as Record<string, unknown> | undefined;
-  const reactions = section?.reactions as Record<string, unknown> | undefined;
+  const reactions = getZulipSection(cfg)?.reactions;
   if (!reactions || reactions.enabled === false) return { enabled: false };
   return {
     enabled: true,
-    onStart: (reactions.onStart as string) ?? undefined,
-    onSuccess: (reactions.onSuccess as string) ?? undefined,
-    onError: (reactions.onError as string) ?? undefined,
+    onStart: reactions.onStart,
+    onSuccess: reactions.onSuccess,
+    onError: reactions.onError,
   };
 }
 

@@ -4,3 +4,6 @@ dist/
 *.env.local
 .DS_Store
 .opencode/skills/
+.claude/skills/
+.claude/settings.local.json
+*.tgz
