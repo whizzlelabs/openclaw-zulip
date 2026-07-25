@@ -3,6 +3,8 @@ import {
   buildChannelConfigSchema,
   buildNestedDmConfigSchema,
   buildCatchallMultiAccountChannelSchema,
+  AllowFromListSchema,
+  DmPolicySchema,
 } from "openclaw/plugin-sdk/channel-config-schema";
 
 // ---------------------------------------------------------------------------
@@ -25,10 +27,25 @@ const accountSchema = z.object({
   apiKey: z.string().optional(),
   replyToMode: z.string().optional(),
   streams: z.record(z.string(), streamConfigSchema).optional(),
+  // Account-level DM controls — these are the fields the adapters actually read
+  // (see security.ts and allowlist.ts). Keep them in sync with ZulipAccountConfig.
+  dmPolicy: DmPolicySchema.optional(),
+  allowFrom: AllowFromListSchema,
+  // Nested form, accepted for parity with other channels' config layout.
   dm: dmConfigSchema,
 });
 
-const channelSchema = buildCatchallMultiAccountChannelSchema(accountSchema);
+// Ack reactions are read from the channel section, not per account (gateway.ts).
+const reactionsConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  onStart: z.string().optional(),
+  onSuccess: z.string().optional(),
+  onError: z.string().optional(),
+}).optional();
+
+const channelSchema = buildCatchallMultiAccountChannelSchema(accountSchema).extend({
+  reactions: reactionsConfigSchema,
+});
 
 // ---------------------------------------------------------------------------
 // Config schema export

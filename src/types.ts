@@ -33,12 +33,25 @@ export type ZulipAccountConfig = {
 };
 
 // ---------------------------------------------------------------------------
+// Ack reactions (section-level — emoji applied to an inbound message while the
+// agent works on it, then swapped for a terminal emoji)
+// ---------------------------------------------------------------------------
+
+export type ZulipReactionsConfig = {
+  enabled?: boolean;
+  onStart?: string;
+  onSuccess?: string;
+  onError?: string;
+};
+
+// ---------------------------------------------------------------------------
 // Channel section shape (root config → channels.zulip)
 // ---------------------------------------------------------------------------
 
 export type ZulipChannelConfig = ZulipAccountConfig & {
   defaultAccount?: string;
   accounts?: Record<string, ZulipAccountConfig>;
+  reactions?: ZulipReactionsConfig;
 };
 
 // ---------------------------------------------------------------------------
