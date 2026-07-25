@@ -68,8 +68,9 @@ channels:
 | `accounts` | No | Named sub-accounts, each taking the fields above |
 | `defaultAccount` | No | Which named account to use when none is specified |
 
-`dmPolicy` and `allowFrom` may also be given in nested form under `dm`
-(`dm.policy`, `dm.allowFrom`) to match the layout used by other OpenClaw channels.
+Use the flat `dmPolicy` / `allowFrom` fields shown above. A nested `dm` block (`dm.policy`,
+`dm.allowFrom`) is accepted by config validation for parity with other OpenClaw channels, but this
+plugin does not read it — values set there have no effect. See issue #44.
 
 ## ACP topic bindings
 

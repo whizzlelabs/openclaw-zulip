@@ -57,7 +57,9 @@ describe("zulipConfigSchema", () => {
     expect(zulipConfigSchema.runtime.safeParse({ dmPolicy: "nonsense" }).success).toBe(false);
   });
 
-  it("still accepts the nested dm form", () => {
+  // Validation-only: the adapters never read `dm`, so this pins that the shape
+  // is accepted, NOT that setting it has any effect. See issue #44.
+  it("accepts the nested dm form without erroring (inert — not read by adapters)", () => {
     const parsed = parseSection({
       dm: { policy: "allowlist", allowFrom: ["someone@example.com"] },
     });

@@ -32,6 +32,9 @@ const accountSchema = z.object({
   dmPolicy: DmPolicySchema.optional(),
   allowFrom: AllowFromListSchema,
   // Nested form, accepted for parity with other channels' config layout.
+  // NOTE: nothing reads this — resolveZulipAccount() only looks at the flat
+  // dmPolicy/allowFrom above, so dm.policy/dm.allowFrom are inert. Either wire
+  // it up or drop it; tracked in issue #44.
   dm: dmConfigSchema,
 });
 
