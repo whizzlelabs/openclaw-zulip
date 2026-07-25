@@ -59,10 +59,35 @@ channels:
 | `email` | Yes | Bot or user email address |
 | `apiKey` | Yes | Zulip API key |
 | `mode` | No | `bot` (default) or `user` |
-| `streams` | No | Per-stream config overrides |
-| `dmPolicy` | No | DM handling policy |
-| `allowFrom` | No | Allowed user IDs or emails |
-| `replyToMode` | No | Reply targeting behavior |
+| `name` | No | Display label for the account |
+| `enabled` | No | Set `false` to keep the account configured but inactive |
+| `streams` | No | Per-stream config overrides (`requireMention`, `enabled`) |
+| `dmPolicy` | No | DM handling policy — `pairing` (default), `allowlist`, `open`, `disabled` |
+| `allowFrom` | No | Allowed sender user IDs or emails (used by `dmPolicy: allowlist`) |
+| `replyToMode` | No | Reply targeting — `all` (default), `first`, `off` |
+| `accounts` | No | Named sub-accounts, each taking the fields above |
+| `defaultAccount` | No | Which named account to use when none is specified |
+
+`dmPolicy` and `allowFrom` may also be given in nested form under `dm`
+(`dm.policy`, `dm.allowFrom`) to match the layout used by other OpenClaw channels.
+
+## ACP topic bindings
+
+A binding ties an ACP agent session to a specific Zulip conversation, so messages arriving there
+are routed to that session instead of starting a new one. Bindings are matched by pattern:
+
+| Pattern | Matches |
+|---------|---------|
+| `<stream_id>/<topic>` | One exact topic in one stream |
+| `<stream_id>/*` | Any topic in that stream |
+| `*/<topic>` | That topic name in any stream |
+| `<stream_id>` | The stream as a whole, or a DM conversation |
+
+More specific patterns win: exact stream + exact topic outranks a wildcard on either side.
+
+Bindings are created at runtime through OpenClaw's binding commands — there is no binding section
+in the plugin config. **They are held in memory and do not survive a gateway restart**, so treat
+them as session-scoped rather than durable configuration.
 
 ## Capabilities
 
