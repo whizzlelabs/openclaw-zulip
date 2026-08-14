@@ -32,9 +32,9 @@ channels:
     # Optional: per-stream overrides
     streams:
       general:
-        requireMention: true
+        requireMention: true   # only respond when mentioned
       private-ops:
-        enabled: false
+        enabled: false         # ignore inbound messages entirely
 
     # Optional: multi-account setup
     accounts:
@@ -61,7 +61,7 @@ channels:
 | `mode` | No | `bot` (default) or `user` |
 | `name` | No | Display label for the account |
 | `enabled` | No | Set `false` to keep the account configured but inactive |
-| `streams` | No | Per-stream config overrides (`requireMention`, `enabled`) |
+| `streams` | No | Per-stream config overrides — see [Per-stream config](#per-stream-config) |
 | `dmPolicy` | No | DM handling policy — `pairing` (default), `allowlist`, `open`, `disabled` |
 | `allowFrom` | No | Allowed sender user IDs or emails (used by `dmPolicy: allowlist`) |
 | `replyToMode` | No | Reply targeting — `all` (default), `first`, `off` |
@@ -71,6 +71,48 @@ channels:
 Use the flat `dmPolicy` / `allowFrom` fields shown above. A nested `dm` block (`dm.policy`,
 `dm.allowFrom`) is accepted by config validation for parity with other OpenClaw channels, but this
 plugin does not read it — values set there have no effect. See issue #44.
+
+### Per-stream config
+
+Each key under `streams` is a stream name, and takes:
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Set `false` to ignore inbound messages in this stream entirely |
+| `requireMention` | Set `true` to only respond in this stream when the account is mentioned |
+
+```yaml
+streams:
+  Homelab:
+    requireMention: true
+  Audit Log:
+    enabled: false
+```
+
+`enabled: false` makes the stream **passive**: inbound messages are dropped before any session,
+typing indicator, reaction, or agent dispatch happens, so a disabled stream costs no tokens. The
+account stays subscribed and fully capable in the other direction — it can still send messages to
+the stream and read or search it through agent tools. Use this for streams an account needs to
+watch or write to, but shouldn't react to on its own.
+
+The policy is per account: several accounts can subscribe to the same stream and each choose
+passive or active independently.
+
+Only an explicit `enabled: false` disables a stream. Streams that are unconfigured, or configured
+without an `enabled` value, are processed as usual.
+
+Stream names are matched ignoring case and surrounding whitespace. A key that is entirely numeric
+is matched against the stream **ID** instead, which survives a stream being renamed:
+
+```yaml
+streams:
+  "42":
+    enabled: false
+```
+
+Numeric keys are ID selectors *only* — they are never matched against a stream's name, so a key of
+`"42"` will not pick up a stream that happens to be named `42`. A stream whose name is entirely
+digits can therefore only be configured by its ID.
 
 ## ACP topic bindings
 
