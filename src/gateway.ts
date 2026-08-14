@@ -16,6 +16,12 @@ import {
   clearZulipBindingStore,
   touchZulipBindingByConversation,
 } from "./bindings.js";
+import { resolveIngressDecision, resolveStreamName } from "./ingress.js";
+import {
+  clearStreamRegistry,
+  hydrateStreamNames,
+  rememberStreamName,
+} from "./stream-registry.js";
 
 const CHANNEL_ID = "zulip";
 
@@ -36,6 +42,16 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
     // Identify ourselves so we can filter our own messages
     const self = await client.getOwnUser();
     log?.info(`Connected as ${self.full_name} (${self.email}, id=${self.user_id})`);
+
+    // Seed the stream registry so per-stream config can be resolved by ID from
+    // the first message onward — and by the groups adapter, which is called
+    // synchronously and cannot hydrate itself. Inbound messages keep the map
+    // fresh afterwards, so a failure here is not fatal.
+    try {
+      hydrateStreamNames(account.accountId, await client.getStreams());
+    } catch (err) {
+      log?.debug?.(`Stream registry hydration failed: ${err}`);
+    }
 
     // Register event queue
     const queue = await client.registerEventQueue({
@@ -100,8 +116,27 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
 
         const msg = event.message;
 
-        // Skip our own messages
-        if (msg.sender_id === self.user_id) continue;
+        // Learn the stream name while we have it — display_recipient is the
+        // only place an inbound event carries it.
+        const streamName = resolveStreamName(msg);
+        if (msg.type === "stream" && msg.stream_id != null && streamName) {
+          rememberStreamName(account.accountId, msg.stream_id, streamName);
+        }
+
+        // Single ingress gate: nothing observable happens before this decision.
+        const decision = resolveIngressDecision({
+          account,
+          selfUserId: self.user_id,
+          message: msg,
+          streamName,
+        });
+        if (decision.action === "drop") {
+          // Own-message echoes are the common case and would drown the log.
+          if (decision.reason !== "self") {
+            log?.info(`Dropping message ${msg.id}: ${decision.detail}`);
+          }
+          continue;
+        }
 
         try {
           await handleInboundMessage(ctx, client, msg);
@@ -120,6 +155,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
     }
     unregisterSessionBindingAdapter({ channel: CHANNEL_ID, accountId: account.accountId, adapter: bindingAdapter });
     clearZulipBindingStore(account.accountId);
+    clearStreamRegistry(account.accountId);
 
     ctx.setStatus({
       accountId: account.accountId,
@@ -186,25 +222,9 @@ async function handleInboundMessage(
     chatType = "direct";
   }
 
-  // Hard-enforce the DM allowlist: drop messages from unauthorized senders
-  // before dispatching to the agent. For dmPolicy "allowlist" the configured
-  // allowFrom is authoritative (the pairing store is intentionally not
-  // consulted, matching the SDK's own ingress behavior). Other policies keep
-  // their existing soft behavior (the agent runs and decides via
-  // CommandAuthorized).
-  if (!isGroup && account.dmPolicy === "allowlist") {
-    const allowFrom = account.allowFrom.map(String);
-    const allowed =
-      allowFrom.includes(msg.sender_email) ||
-      allowFrom.includes(String(msg.sender_id)) ||
-      allowFrom.includes("*");
-    if (!allowed) {
-      log?.info(
-        `Dropping unauthorized DM from ${msg.sender_email} (id=${msg.sender_id}); dmPolicy=allowlist`,
-      );
-      return;
-    }
-  }
+  // NOTE: self-filtering, disabled streams and the DM allowlist are all
+  // decided in ingress.ts before this function is reached. Do not add drop
+  // conditions here — a message that arrives has already been accepted.
 
   // Touch any active binding for this conversation so idle timeout resets
   touchZulipBindingByConversation(account.accountId, peerId);
