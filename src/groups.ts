@@ -1,15 +1,22 @@
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
 import type { CoreConfig } from "./types.js";
 import { resolveZulipAccount } from "./config.js";
-import { lookupStreamName, resolveStreamConfig } from "./stream-registry.js";
+import { lookupStreamName, lookupStreamId, resolveStreamConfig } from "./stream-registry.js";
 
 // ---------------------------------------------------------------------------
 // Groups adapter — per-stream policies
 // ---------------------------------------------------------------------------
 
-/** "#Homelab" → "Homelab". Empty or absent labels resolve to undefined. */
+/**
+ * "#Homelab" → "Homelab".
+ *
+ * Strips exactly one leading "#" — the single marker the gateway adds when it
+ * sets GroupChannel to `#${display_recipient}`. Stripping greedily would
+ * corrupt names that legitimately start with "#": a stream named "#ops"
+ * arrives as "##ops" and must resolve back to "#ops", not "ops".
+ */
 function normalizeStreamLabel(label: string | null | undefined): string | undefined {
-  const trimmed = (label ?? "").trim().replace(/^#+/, "").trim();
+  const trimmed = (label ?? "").trim().replace(/^#/, "").trim();
   return trimmed === "" ? undefined : trimmed;
 }
 
@@ -32,15 +39,25 @@ export const zulipGroupsAdapter: NonNullable<ChannelPlugin["groups"]> = {
     // conversation ID (and for the "<stream_id>/<topic>" form).
     const streamPart = (groupId ?? "").split("/")[0].trim();
     const parsed = Number(streamPart);
-    const streamId =
+    const idFromGroupId =
       streamPart !== "" && Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 
     const streamName =
       nameFromChannel ??
-      (streamId !== undefined ? lookupStreamName(account.accountId, streamId) : undefined) ??
+      (idFromGroupId !== undefined
+        ? lookupStreamName(account.accountId, idFromGroupId)
+        : undefined) ??
       // Last resort: treat groupId as a name, for callers that address a
       // stream by name rather than ID.
-      (streamId === undefined && streamPart !== "" ? streamPart : undefined);
+      (idFromGroupId === undefined && streamPart !== "" ? streamPart : undefined);
+
+    // Recover the ID from the name when groupId did not carry one. In the
+    // runtime shape it never does, so without this every ID-keyed config entry
+    // is unreachable here — including for a stream whose *name* is numeric,
+    // which resolveStreamConfig() deliberately refuses to match by name.
+    const streamId =
+      idFromGroupId ??
+      (streamName !== undefined ? lookupStreamId(account.accountId, streamName) : undefined);
 
     if (streamId === undefined && streamName === undefined) return undefined;
 

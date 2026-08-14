@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   rememberStreamName,
   lookupStreamName,
+  lookupStreamId,
   hydrateStreamNames,
   clearStreamRegistry,
   resolveStreamConfig,
@@ -56,6 +57,32 @@ describe("stream name registry", () => {
     hydrateStreamNames(ACCOUNT, [{ stream_id: 1, name: "general" }]);
 
     expect(lookupStreamName(ACCOUNT, 42)).toBe("Seen On A Message");
+  });
+
+  it("looks up an id by name", () => {
+    rememberStreamName(ACCOUNT, 42, "Homelab");
+    expect(lookupStreamId(ACCOUNT, "Homelab")).toBe(42);
+  });
+
+  it("looks up an id ignoring case and whitespace", () => {
+    rememberStreamName(ACCOUNT, 42, "Homelab");
+    expect(lookupStreamId(ACCOUNT, "  homelab ")).toBe(42);
+  });
+
+  it("looks up an id for a numerically-named stream", () => {
+    rememberStreamName(ACCOUNT, 7, "42");
+    expect(lookupStreamId(ACCOUNT, "42")).toBe(7);
+  });
+
+  it("returns undefined for an unknown or empty name", () => {
+    rememberStreamName(ACCOUNT, 42, "Homelab");
+    expect(lookupStreamId(ACCOUNT, "Nowhere")).toBeUndefined();
+    expect(lookupStreamId(ACCOUNT, "   ")).toBeUndefined();
+  });
+
+  it("keeps reverse lookups account-isolated", () => {
+    rememberStreamName(ACCOUNT, 42, "Homelab");
+    expect(lookupStreamId("other", "Homelab")).toBeUndefined();
   });
 
   it("drops everything for an account on clear", () => {

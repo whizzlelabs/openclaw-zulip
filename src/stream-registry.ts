@@ -43,6 +43,27 @@ export function lookupStreamName(
 }
 
 /**
+ * Reverse lookup: name → stream ID.
+ *
+ * Needed because callers frequently hold only a name — the groups adapter gets
+ * the stream name via `groupChannel` and never a usable ID — while config may
+ * be keyed by ID. Without this, ID-keyed entries are unreachable for those
+ * callers. Matching is case- and whitespace-insensitive, like config keys.
+ */
+export function lookupStreamId(
+  accountId: string,
+  name: string,
+): number | undefined {
+  const wanted = normalizeName(name);
+  if (wanted === "") return undefined;
+
+  for (const [streamId, streamName] of getStore(accountId)) {
+    if (normalizeName(streamName) === wanted) return streamId;
+  }
+  return undefined;
+}
+
+/**
  * Replace the cached names for an account in one pass — used when hydrating
  * from `getStreams()`. Existing entries are kept: a name seen on an inbound
  * message is as authoritative as one from the API, and dropping it would

@@ -155,6 +155,59 @@ describe("resolveRequireMention — gateway-shaped context", () => {
     expect(requireMention(cfg, undefined, undefined)).toBeUndefined();
     expect(requireMention(cfg, "", "#")).toBeUndefined();
   });
+
+  // groupId never carries a stream ID in the runtime shape, so an ID-keyed
+  // entry is only reachable by recovering the ID from the name.
+  it("honors ID-keyed config when only the name is supplied", () => {
+    rememberStreamName(ACCOUNT, 42, "Homelab");
+    const cfg = makeConfig({ "42": { requireMention: true } });
+
+    expect(gatewayShaped(cfg, "Homelab")).toBe(true);
+  });
+
+  // Stream ID 7 whose *name* is "42": resolveStreamConfig refuses to match a
+  // numeric name, so this only works via the recovered ID.
+  it("honors ID-keyed config for a numerically-named stream", () => {
+    rememberStreamName(ACCOUNT, 7, "42");
+    const cfg = makeConfig({ "7": { requireMention: true } });
+
+    expect(gatewayShaped(cfg, "42")).toBe(true);
+  });
+
+  it("does not confuse a numerically-named stream with the ID it resembles", () => {
+    rememberStreamName(ACCOUNT, 7, "42");
+    const cfg = makeConfig({ "42": { requireMention: true } });
+
+    // Config key "42" selects stream ID 42, which is not this stream (ID 7).
+    expect(gatewayShaped(cfg, "42")).toBeUndefined();
+  });
+
+  it("returns undefined when the name is unknown to the registry", () => {
+    const cfg = makeConfig({ "42": { requireMention: true } });
+    expect(gatewayShaped(cfg, "Homelab")).toBeUndefined();
+  });
+});
+
+// The gateway sets GroupChannel to `#${display_recipient}`, so a stream whose
+// name already starts with "#" arrives double-prefixed.
+describe("resolveRequireMention — stream names containing punctuation", () => {
+  it("preserves a leading # that is part of the stream name", () => {
+    const cfg = makeConfig({ "#ops": { requireMention: true } });
+
+    expect(requireMention(cfg, "alice@example.com", "##ops")).toBe(true);
+  });
+
+  it("does not match the un-prefixed name for a #-named stream", () => {
+    const cfg = makeConfig({ ops: { requireMention: true } });
+
+    expect(requireMention(cfg, "alice@example.com", "##ops")).toBeUndefined();
+  });
+
+  it("still strips the single synthetic prefix for ordinary names", () => {
+    const cfg = makeConfig({ Homelab: { requireMention: true } });
+
+    expect(requireMention(cfg, "alice@example.com", "#Homelab")).toBe(true);
+  });
 });
 
 describe("resolveGroupIntroHint", () => {
