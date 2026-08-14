@@ -14,6 +14,15 @@ const SUPPORTED_ACTIONS = new Set([
   "upload-file", "download-file", "channel-list", "channel-info", "member-info",
 ]);
 
+/**
+ * Stream IDs are positive integers, and large ones must survive the round trip
+ * intact — "999999999999999999999" passes both a digit test and Number.isInteger
+ * but has already lost precision by the time it is a number.
+ */
+function isUsableStreamId(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
 export type StreamOperandResult =
   | { ok: true; operand: string; streamId?: number }
   | { ok: false; error: string };
@@ -28,10 +37,21 @@ export type StreamOperandResult =
  * takes a stream — `topic-edit`, `channel-info` — hits an endpoint whose
  * parameter really is the numeric ID, which is why only search was affected.
  *
- * An entirely numeric value is an ID and is resolved through the API; anything
- * else is already a name and passes through. That matches how per-stream config
- * keys are read (see isIdKey in stream-registry.ts): numeric means ID, so a
- * stream *named* "17" can only be searched by its ID.
+ * What counts as an ID depends on the input's type, and the two cases are kept
+ * deliberately narrow:
+ *
+ *   - A JSON *number* is always an ID. It is never a name, so a non-integer or
+ *     out-of-range number is an error rather than a stream called "17.5".
+ *   - A *string* is an ID only if it is decimal digits — the same test isIdKey()
+ *     applies to per-stream config keys. Number() would be far looser and would
+ *     silently misroute perfectly legal stream names: "1e3" resolves to ID 1000,
+ *     and "0x11" and "+17" both to ID 17, so those streams could never be
+ *     searched by name and would return another stream's messages instead.
+ *
+ * Everything else is already a name and passes through untouched. Numeric
+ * therefore means ID, which is why a stream literally *named* "17" can only be
+ * searched by its ID — the same tradeoff isIdKey() makes, kept identical so the
+ * two surfaces cannot disagree about what a config key or a parameter means.
  */
 export async function resolveStreamNarrowOperand(
   client: { getStreamById(streamId: number): Promise<{ stream_id: number; name: string }> },
@@ -40,9 +60,25 @@ export async function resolveStreamNarrowOperand(
   const asText = String(raw ?? "").trim();
   if (asText === "") return { ok: false, error: "zulip_stream_id is empty" };
 
-  const numeric = Number(asText);
-  if (!Number.isInteger(numeric)) return { ok: true, operand: asText };
+  let streamId: number | undefined;
+  if (typeof raw === "number") {
+    if (!isUsableStreamId(raw)) {
+      return { ok: false, error: `zulip_stream_id must be a positive integer stream ID, got ${asText}` };
+    }
+    streamId = raw;
+  } else if (typeof raw === "string" && /^\d+$/.test(asText)) {
+    const parsed = Number(asText);
+    if (!isUsableStreamId(parsed)) {
+      return { ok: false, error: `zulip_stream_id ${asText} is not a usable stream ID` };
+    }
+    streamId = parsed;
+  }
 
+  // Not an ID by either rule — the caller gave a name, which is what the narrow
+  // operator wants anyway.
+  if (streamId === undefined) return { ok: true, operand: asText };
+
+  const numeric = streamId;
   let stream: { stream_id: number; name: string };
   try {
     stream = await client.getStreamById(numeric);

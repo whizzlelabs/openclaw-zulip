@@ -121,6 +121,49 @@ describe("resolveStreamNarrowOperand", () => {
     expect(called).toBe(false);
   });
 
+  // Number() accepts far more than "entirely numeric". Each of these is a legal
+  // Zulip stream name that coerced to an unrelated ID, so the stream could
+  // never be searched by name and returned another stream's messages instead.
+  // Only decimal digits count as an ID, matching isIdKey(). See the PR #65 review.
+  it.each([
+    ["1e3", "would have resolved to ID 1000"],
+    ["0x11", "would have resolved to ID 17"],
+    ["+17", "would have resolved to ID 17"],
+    ["17.5", "not an integer"],
+    ["-17", "negative"],
+    ["Infinity", "coerces to a non-finite number"],
+  ])("treats %s as a stream name (%s)", async (name) => {
+    const spy = {
+      getStreamById: async () => {
+        throw new Error("must not resolve a name through the ID path");
+      },
+    };
+    expect(await resolveStreamNarrowOperand(spy, name)).toEqual({ ok: true, operand: name });
+  });
+
+  it("keeps leading zeros as an ID", async () => {
+    expect(await resolveStreamNarrowOperand(client, "017")).toEqual({
+      ok: true,
+      operand: "Homelab",
+      streamId: 17,
+    });
+  });
+
+  // A JSON number is an ID by construction — never a name.
+  it.each([17.5, -17, 0, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects the numeric value %s rather than treating it as a name",
+    async (value) => {
+      const result = await resolveStreamNarrowOperand(client, value);
+      expect(result.ok).toBe(false);
+    },
+  );
+
+  it("rejects an id too large to survive as a number", async () => {
+    const result = await resolveStreamNarrowOperand(client, "999999999999999999999");
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toContain("999999999999999999999");
+  });
+
   it("reports an unresolvable id instead of guessing", async () => {
     const result = await resolveStreamNarrowOperand(client, 999);
     expect(result.ok).toBe(false);
