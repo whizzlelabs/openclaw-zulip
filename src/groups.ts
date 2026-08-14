@@ -7,29 +7,44 @@ import { lookupStreamName, resolveStreamConfig } from "./stream-registry.js";
 // Groups adapter — per-stream policies
 // ---------------------------------------------------------------------------
 
+/** "#Homelab" → "Homelab". Empty or absent labels resolve to undefined. */
+function normalizeStreamLabel(label: string | null | undefined): string | undefined {
+  const trimmed = (label ?? "").trim().replace(/^#+/, "").trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 export const zulipGroupsAdapter: NonNullable<ChannelPlugin["groups"]> = {
-  resolveRequireMention({ cfg, accountId, groupId }) {
+  resolveRequireMention({ cfg, accountId, groupId, groupChannel }) {
     const account = resolveZulipAccount(cfg as CoreConfig, accountId);
-    if (!groupId) return undefined;
 
-    // groupId is normally the bare stream ID (peerId is "<stream_id>/<topic>",
-    // so the parent group is the ID alone), but accept the topic-qualified form
-    // too rather than silently missing on it. Per-stream config is keyed by
-    // name, so go through the registry the gateway populates to get back to one.
-    const streamPart = groupId.split("/")[0];
+    // `groupChannel` is the reliable identity here, not `groupId`.
+    //
+    // The SDK derives groupId from the group session resolution, which falls
+    // back to ctx.From whenever it cannot parse a channel-qualified
+    // OriginatingTo — and this plugin sends a bare "<stream_id>", which
+    // resolveOriginatingGroupTargetId() rejects for having no ":" separator.
+    // So at runtime groupId is the *sender's email*, not the stream. The SDK
+    // passes the stream name separately as groupChannel ("#<name>", set by the
+    // gateway), which is what the bundled channels key off for the same reason.
+    const nameFromChannel = normalizeStreamLabel(groupChannel);
+
+    // Still accept a stream ID via groupId, for callers that supply a real
+    // conversation ID (and for the "<stream_id>/<topic>" form).
+    const streamPart = (groupId ?? "").split("/")[0].trim();
     const parsed = Number(streamPart);
-    const streamId = streamPart !== "" && Number.isFinite(parsed) ? parsed : undefined;
+    const streamId =
+      streamPart !== "" && Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+
     const streamName =
-      streamId !== undefined ? lookupStreamName(account.accountId, streamId) : undefined;
+      nameFromChannel ??
+      (streamId !== undefined ? lookupStreamName(account.accountId, streamId) : undefined) ??
+      // Last resort: treat groupId as a name, for callers that address a
+      // stream by name rather than ID.
+      (streamId === undefined && streamPart !== "" ? streamPart : undefined);
 
-    const streamConfig = resolveStreamConfig(account, {
-      streamId,
-      // Fall back to treating the groupId as a name — it is one for callers
-      // that address a stream by name rather than ID.
-      streamName: streamName ?? streamPart,
-    });
+    if (streamId === undefined && streamName === undefined) return undefined;
 
-    return streamConfig?.requireMention;
+    return resolveStreamConfig(account, { streamId, streamName })?.requireMention;
   },
 
   resolveGroupIntroHint({ cfg, accountId }) {

@@ -71,6 +71,16 @@ function normalizeName(value: string): string {
 }
 
 /**
+ * An entirely numeric config key selects a stream by ID, so it must never also
+ * match by name — otherwise a stream literally *named* "42" would pick up the
+ * config meant for stream ID 42. The cost is that a numerically-named stream
+ * can only be configured by its ID; that is the documented tradeoff.
+ */
+function isIdKey(key: string): boolean {
+  return /^\d+$/.test(key.trim());
+}
+
+/**
  * Resolve the per-stream config block for a stream, given whatever identity
  * the caller happens to hold.
  *
@@ -78,8 +88,10 @@ function normalizeName(value: string): string {
  *   1. exact name match
  *   2. case-insensitive / whitespace-trimmed name match — Zulip stream names
  *      are display strings, and operators do not reproduce them byte-exactly
- *   3. numeric key matched against the stream ID, so a config can pin a stream
- *      that gets renamed
+ *   3. entirely numeric key matched against the stream ID, so a config can pin
+ *      a stream that gets renamed
+ *
+ * Numeric keys participate only in step 3 — see isIdKey().
  */
 export function resolveStreamConfig(
   account: Pick<ZulipResolvedAccount, "streams">,
@@ -88,12 +100,13 @@ export function resolveStreamConfig(
   const { streams } = account;
   if (!streams) return undefined;
 
-  if (ref.streamName !== undefined) {
+  if (ref.streamName !== undefined && !isIdKey(ref.streamName)) {
     const direct = streams[ref.streamName];
     if (direct) return direct;
 
     const wanted = normalizeName(ref.streamName);
     for (const [key, value] of Object.entries(streams)) {
+      if (isIdKey(key)) continue;
       if (normalizeName(key) === wanted) return value;
     }
   }
@@ -101,6 +114,12 @@ export function resolveStreamConfig(
   if (ref.streamId !== undefined) {
     const byId = streams[String(ref.streamId)];
     if (byId) return byId;
+
+    // isIdKey() trims, so a padded key like " 42 " counts as an ID selector —
+    // match it here too rather than leaving it unusable in both passes.
+    for (const [key, value] of Object.entries(streams)) {
+      if (isIdKey(key) && Number(key.trim()) === ref.streamId) return value;
+    }
   }
 
   return undefined;

@@ -22,13 +22,30 @@ function makeConfig(streams: Record<string, ZulipStreamConfig>): CoreConfig {
   } as CoreConfig;
 }
 
-function requireMention(cfg: CoreConfig, groupId: string | undefined) {
+function requireMention(
+  cfg: CoreConfig,
+  groupId: string | undefined,
+  groupChannel?: string,
+) {
   return zulipGroupsAdapter.resolveRequireMention?.({
     cfg,
     accountId: ACCOUNT,
     groupId,
+    groupChannel,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
+}
+
+/**
+ * The shape the SDK actually hands us for a Zulip stream message.
+ *
+ * resolveGroupSessionKey() cannot parse this plugin's bare "<stream_id>"
+ * OriginatingTo, so it falls back to ctx.From — meaning groupId arrives as the
+ * *sender's email*. The stream name comes through groupChannel instead. See
+ * the PR #63 review; the earlier synthetic `groupId: "42"` tests missed this.
+ */
+function gatewayShaped(cfg: CoreConfig, streamName: string, senderEmail = "alice@example.com") {
+  return requireMention(cfg, senderEmail, `#${streamName}`);
 }
 
 beforeEach(() => {
@@ -90,6 +107,53 @@ describe("resolveRequireMention", () => {
   it("accepts a group id that is already a stream name", () => {
     const cfg = makeConfig({ Homelab: { requireMention: true } });
     expect(requireMention(cfg, "Homelab")).toBe(true);
+  });
+});
+
+// The synthetic `groupId: "42"` cases above do not reflect what the SDK passes
+// at runtime. These do.
+describe("resolveRequireMention — gateway-shaped context", () => {
+  it("resolves the stream from groupChannel when groupId is a sender email", () => {
+    const cfg = makeConfig({ Homelab: { requireMention: true } });
+    expect(gatewayShaped(cfg, "Homelab")).toBe(true);
+  });
+
+  it("returns undefined for an unconfigured stream in the runtime shape", () => {
+    const cfg = makeConfig({ Homelab: { requireMention: true } });
+    expect(gatewayShaped(cfg, "Chatty")).toBeUndefined();
+  });
+
+  it("does not leak requireMention across streams in the runtime shape", () => {
+    const cfg = makeConfig({
+      Homelab: { requireMention: true },
+      Chatty: { requireMention: false },
+    });
+
+    expect(gatewayShaped(cfg, "Homelab")).toBe(true);
+    expect(gatewayShaped(cfg, "Chatty")).toBe(false);
+  });
+
+  it("does not treat the sender email as a stream name", () => {
+    const cfg = makeConfig({ "alice@example.com": { requireMention: true } });
+    expect(gatewayShaped(cfg, "Homelab")).toBeUndefined();
+  });
+
+  it("matches groupChannel ignoring case and whitespace", () => {
+    const cfg = makeConfig({ "  homelab  ": { requireMention: true } });
+    expect(gatewayShaped(cfg, "Homelab")).toBe(true);
+  });
+
+  it("prefers groupChannel over a registry name for the same groupId", () => {
+    rememberStreamName(ACCOUNT, 42, "Stale");
+    const cfg = makeConfig({ Homelab: { requireMention: true }, Stale: { requireMention: false } });
+
+    expect(requireMention(cfg, "42", "#Homelab")).toBe(true);
+  });
+
+  it("returns undefined when neither identity is usable", () => {
+    const cfg = makeConfig({ Homelab: { requireMention: true } });
+    expect(requireMention(cfg, undefined, undefined)).toBeUndefined();
+    expect(requireMention(cfg, "", "#")).toBeUndefined();
   });
 });
 

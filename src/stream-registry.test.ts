@@ -103,6 +103,32 @@ describe("resolveStreamConfig", () => {
     expect(resolveStreamConfig(account, { streamName: "Nowhere" })).toBeUndefined();
   });
 
+  // A numeric key is an ID selector, so it must not also match a stream that
+  // happens to be *named* that number — otherwise one key silently configures
+  // two unrelated streams. See the PR #63 review.
+  it("does not let a numeric key match a stream named that number", () => {
+    const cfg = { streams: { "42": { enabled: false } } };
+
+    // Stream ID 43, display name "42" — must not pick up the ID-42 config.
+    expect(resolveStreamConfig(cfg, { streamId: 43, streamName: "42" })).toBeUndefined();
+    // Stream ID 42 still resolves.
+    expect(resolveStreamConfig(cfg, { streamId: 42, streamName: "Homelab" })).toEqual({
+      enabled: false,
+    });
+  });
+
+  it("ignores numeric keys when matching by name only", () => {
+    const cfg = { streams: { "42": { enabled: false } } };
+    expect(resolveStreamConfig(cfg, { streamName: "42" })).toBeUndefined();
+  });
+
+  it("treats a padded numeric key as an ID selector, not a name", () => {
+    const cfg = { streams: { " 42 ": { enabled: false } } };
+
+    expect(resolveStreamConfig(cfg, { streamId: 42 })).toEqual({ enabled: false });
+    expect(resolveStreamConfig(cfg, { streamName: "42" })).toBeUndefined();
+  });
+
   it("returns undefined when given no identity at all", () => {
     expect(resolveStreamConfig(account, {})).toBeUndefined();
   });

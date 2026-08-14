@@ -110,6 +110,10 @@ streams:
     enabled: false
 ```
 
+Numeric keys are ID selectors *only* — they are never matched against a stream's name, so a key of
+`"42"` will not pick up a stream that happens to be named `42`. A stream whose name is entirely
+digits can therefore only be configured by its ID.
+
 ## ACP topic bindings
 
 A binding ties an ACP agent session to a specific Zulip conversation, so messages arriving there
