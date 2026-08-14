@@ -14,14 +14,29 @@ import type { ZulipResolvedAccount, ZulipStreamConfig } from "./types.js";
 // lazy hydrate from the API.
 // ---------------------------------------------------------------------------
 
-// Per-account store: stream_id → stream name
-const namesByAccount = new Map<string, Map<number, string>>();
+/**
+ * Both directions are indexed, and the pair is kept strictly one-to-one on the
+ * normalized name.
+ *
+ * The queue subscribes to message events only, so the registry never sees a
+ * rename — it only ever learns that some ID now reports some name. If a stream
+ * is renamed away and its old name reused by another stream, a name would map
+ * to two IDs, and any scan would be free to return the stale one. Enforcing
+ * one-to-one on write, latest observation winning, keeps that impossible
+ * rather than merely unlikely.
+ */
+type StreamRegistry = {
+  namesById: Map<number, string>;
+  idsByName: Map<string, number>;
+};
 
-function getStore(accountId: string): Map<number, string> {
-  let store = namesByAccount.get(accountId);
+const registryByAccount = new Map<string, StreamRegistry>();
+
+function getStore(accountId: string): StreamRegistry {
+  let store = registryByAccount.get(accountId);
   if (!store) {
-    store = new Map();
-    namesByAccount.set(accountId, store);
+    store = { namesById: new Map(), idsByName: new Map() };
+    registryByAccount.set(accountId, store);
   }
   return store;
 }
@@ -32,14 +47,38 @@ export function rememberStreamName(
   name: string,
 ): void {
   if (!name) return;
-  getStore(accountId).set(streamId, name);
+
+  const store = getStore(accountId);
+  const key = normalizeName(name);
+  if (key === "") return;
+
+  // This stream had a different name: retire the old reverse entry, but only
+  // if it still points here — another stream may already have claimed it.
+  const previousName = store.namesById.get(streamId);
+  if (previousName !== undefined) {
+    const previousKey = normalizeName(previousName);
+    if (previousKey !== key && store.idsByName.get(previousKey) === streamId) {
+      store.idsByName.delete(previousKey);
+    }
+  }
+
+  // Another stream held this name: it must have been renamed away without us
+  // seeing it. We do not know its new name, so drop it entirely — keeping a
+  // name we know to be wrong would mis-resolve config for that ID too.
+  const previousHolder = store.idsByName.get(key);
+  if (previousHolder !== undefined && previousHolder !== streamId) {
+    store.namesById.delete(previousHolder);
+  }
+
+  store.namesById.set(streamId, name);
+  store.idsByName.set(key, streamId);
 }
 
 export function lookupStreamName(
   accountId: string,
   streamId: number,
 ): string | undefined {
-  return getStore(accountId).get(streamId);
+  return getStore(accountId).namesById.get(streamId);
 }
 
 /**
@@ -57,30 +96,29 @@ export function lookupStreamId(
   const wanted = normalizeName(name);
   if (wanted === "") return undefined;
 
-  for (const [streamId, streamName] of getStore(accountId)) {
-    if (normalizeName(streamName) === wanted) return streamId;
-  }
-  return undefined;
+  return getStore(accountId).idsByName.get(wanted);
 }
 
 /**
- * Replace the cached names for an account in one pass — used when hydrating
- * from `getStreams()`. Existing entries are kept: a name seen on an inbound
- * message is as authoritative as one from the API, and dropping it would
- * reintroduce misses between hydrations.
+ * Fold a stream listing into the cache — used when hydrating from
+ * `getStreams()`. Entries not mentioned in the batch are kept: a name seen on
+ * an inbound message is as authoritative as one from the API, and dropping it
+ * would reintroduce misses between hydrations.
+ *
+ * Goes through the same write path as rememberStreamName(), so a rename
+ * observed here evicts the stale mapping identically.
  */
 export function hydrateStreamNames(
   accountId: string,
   streams: Array<{ stream_id: number; name: string }>,
 ): void {
-  const store = getStore(accountId);
   for (const stream of streams) {
-    store.set(stream.stream_id, stream.name);
+    rememberStreamName(accountId, stream.stream_id, stream.name);
   }
 }
 
 export function clearStreamRegistry(accountId: string): void {
-  namesByAccount.delete(accountId);
+  registryByAccount.delete(accountId);
 }
 
 // ---------------------------------------------------------------------------

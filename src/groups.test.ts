@@ -186,6 +186,22 @@ describe("resolveRequireMention — gateway-shaped context", () => {
     const cfg = makeConfig({ "42": { requireMention: true } });
     expect(gatewayShaped(cfg, "Homelab")).toBeUndefined();
   });
+
+  // A rename is never observed directly (message events only), so the registry
+  // must not let a reused name resolve back to the stream that gave it up.
+  it("applies the current stream's config after a rename and name reuse", () => {
+    rememberStreamName(ACCOUNT, 42, "Ops");
+    rememberStreamName(ACCOUNT, 43, "Chat");
+    // 42 renamed away unseen; 43 renamed to "Ops" and posts.
+    rememberStreamName(ACCOUNT, 43, "Ops");
+
+    const cfg = makeConfig({
+      "42": { requireMention: true },
+      "43": { requireMention: false },
+    });
+
+    expect(gatewayShaped(cfg, "Ops")).toBe(false);
+  });
 });
 
 // The gateway sets GroupChannel to `#${display_recipient}`, so a stream whose

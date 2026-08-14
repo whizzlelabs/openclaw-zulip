@@ -85,6 +85,57 @@ describe("stream name registry", () => {
     expect(lookupStreamId("other", "Homelab")).toBeUndefined();
   });
 
+  it("retires the old name when a stream is renamed", () => {
+    rememberStreamName(ACCOUNT, 42, "Old Name");
+    rememberStreamName(ACCOUNT, 42, "New Name");
+
+    expect(lookupStreamId(ACCOUNT, "Old Name")).toBeUndefined();
+    expect(lookupStreamId(ACCOUNT, "New Name")).toBe(42);
+    expect(lookupStreamName(ACCOUNT, 42)).toBe("New Name");
+  });
+
+  // The queue carries message events only, so a rename is never observed
+  // directly — the registry just sees a new ID reporting an existing name. If
+  // both mappings survived, a lookup could return the stale ID.
+  it("does not return a stale id after a rename and name reuse", () => {
+    hydrateStreamNames(ACCOUNT, [
+      { stream_id: 42, name: "Ops" },
+      { stream_id: 43, name: "Chat" },
+    ]);
+
+    // 42 is renamed away unseen; 43 is renamed to "Ops" and posts a message.
+    rememberStreamName(ACCOUNT, 43, "Ops");
+
+    expect(lookupStreamId(ACCOUNT, "Ops")).toBe(43);
+    expect(lookupStreamName(ACCOUNT, 43)).toBe("Ops");
+    // 42's cached name is known to be wrong, so it is dropped rather than kept.
+    expect(lookupStreamName(ACCOUNT, 42)).toBeUndefined();
+    expect(lookupStreamId(ACCOUNT, "Chat")).toBeUndefined();
+  });
+
+  it("keeps the mapping one-to-one across a name swap", () => {
+    rememberStreamName(ACCOUNT, 1, "A");
+    rememberStreamName(ACCOUNT, 2, "B");
+    rememberStreamName(ACCOUNT, 2, "A");
+
+    expect(lookupStreamId(ACCOUNT, "A")).toBe(2);
+    expect(lookupStreamId(ACCOUNT, "B")).toBeUndefined();
+    expect(lookupStreamName(ACCOUNT, 1)).toBeUndefined();
+  });
+
+  it("treats a case-only rename as the same name", () => {
+    rememberStreamName(ACCOUNT, 42, "Homelab");
+    rememberStreamName(ACCOUNT, 42, "HOMELAB");
+
+    expect(lookupStreamId(ACCOUNT, "homelab")).toBe(42);
+    expect(lookupStreamName(ACCOUNT, 42)).toBe("HOMELAB");
+  });
+
+  it("ignores whitespace-only names", () => {
+    rememberStreamName(ACCOUNT, 42, "   ");
+    expect(lookupStreamName(ACCOUNT, 42)).toBeUndefined();
+  });
+
   it("drops everything for an account on clear", () => {
     rememberStreamName(ACCOUNT, 42, "Homelab");
     clearStreamRegistry(ACCOUNT);
