@@ -1,6 +1,9 @@
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
 import type { ChannelMessageActionContext } from "openclaw/plugin-sdk/core";
+import type { CoreConfig } from "./types.js";
+import { resolveZulipAccount } from "./config.js";
 import { buildClient } from "./outbound.js";
+import { rememberStreamName } from "./stream-registry.js";
 
 // ---------------------------------------------------------------------------
 // Zulip message actions adapter
@@ -10,6 +13,54 @@ const SUPPORTED_ACTIONS = new Set([
   "react", "edit", "unsend", "delete", "search", "topic-edit",
   "upload-file", "download-file", "channel-list", "channel-info", "member-info",
 ]);
+
+export type StreamOperandResult =
+  | { ok: true; operand: string; streamId?: number }
+  | { ok: false; error: string };
+
+/**
+ * Turn whatever the caller passed as `zulip_stream_id` into a `stream` narrow
+ * operand.
+ *
+ * Zulip's narrow operators are matched against the channel *name*, so handing
+ * the numeric ID straight through makes the server look for a channel literally
+ * named "17" and fail the whole search (issue #64). Every other action that
+ * takes a stream — `topic-edit`, `channel-info` — hits an endpoint whose
+ * parameter really is the numeric ID, which is why only search was affected.
+ *
+ * An entirely numeric value is an ID and is resolved through the API; anything
+ * else is already a name and passes through. That matches how per-stream config
+ * keys are read (see isIdKey in stream-registry.ts): numeric means ID, so a
+ * stream *named* "17" can only be searched by its ID.
+ */
+export async function resolveStreamNarrowOperand(
+  client: { getStreamById(streamId: number): Promise<{ stream_id: number; name: string }> },
+  raw: unknown,
+): Promise<StreamOperandResult> {
+  const asText = String(raw ?? "").trim();
+  if (asText === "") return { ok: false, error: "zulip_stream_id is empty" };
+
+  const numeric = Number(asText);
+  if (!Number.isInteger(numeric)) return { ok: true, operand: asText };
+
+  let stream: { stream_id: number; name: string };
+  try {
+    stream = await client.getStreamById(numeric);
+  } catch (e) {
+    // Fail here rather than falling back to the ID: a malformed narrow makes
+    // Zulip reject the entire request, so a bad stream ID would also throw away
+    // the topic and query the caller asked for.
+    return {
+      ok: false,
+      error: `Could not resolve Zulip stream ID ${numeric}: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  if (!stream?.name) {
+    return { ok: false, error: `Zulip returned no name for stream ID ${numeric}` };
+  }
+  return { ok: true, operand: stream.name, streamId: stream.stream_id ?? numeric };
+}
 
 export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
   supportsAction({ action }) {
@@ -26,7 +77,7 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
           zulip_emoji: { type: "string", description: "Emoji name for the react action (e.g. 'thumbs_up', '+1')" },
           zulip_content: { type: "string", description: "New message content for the edit action" },
           zulip_topic: { type: "string", description: "Topic name for topic-edit or search narrow" },
-          zulip_stream_id: { type: "number", description: "Stream ID for topic-edit or search narrow" },
+          zulip_stream_id: { type: "number", description: "Stream ID for topic-edit or search narrow (search resolves it to the stream name; a non-numeric value is treated as a stream name)" },
           zulip_query: { type: "string", description: "Full-text search query for the search action" },
           zulip_propagate_mode: { type: "string", description: "Topic propagation mode for topic-edit: 'change_one', 'change_later', or 'change_all' (default)" },
           zulip_file_path: { type: "string", description: "Local file path for upload-file, or Zulip file URI for download-file" },
@@ -79,7 +130,18 @@ export const zulipActionsAdapter: NonNullable<ChannelPlugin["actions"]> = {
       case "search": {
         const limit = p.zulip_limit ? Number(p.zulip_limit) || 10 : 10;
         const narrow: Array<{ operator: string; operand: string }> = [];
-        if (p.zulip_stream_id) narrow.push({ operator: "stream", operand: text(p.zulip_stream_id) });
+        if (p.zulip_stream_id != null && text(p.zulip_stream_id).trim() !== "") {
+          const resolved = await resolveStreamNarrowOperand(client, p.zulip_stream_id);
+          if (!resolved.ok) return err(resolved.error);
+          // We just learned an authoritative id → name pair; the registry is
+          // otherwise only fed by the poll loop, so streams this account has
+          // not yet seen a message in stay unresolvable for per-stream config.
+          if (resolved.streamId !== undefined) {
+            const account = resolveZulipAccount(ctx.cfg as CoreConfig, ctx.accountId);
+            rememberStreamName(account.accountId, resolved.streamId, resolved.operand);
+          }
+          narrow.push({ operator: "stream", operand: resolved.operand });
+        }
         if (p.zulip_topic) narrow.push({ operator: "topic", operand: text(p.zulip_topic) });
         if (p.zulip_query) narrow.push({ operator: "search", operand: text(p.zulip_query) });
         const messages = await client.searchMessages({
