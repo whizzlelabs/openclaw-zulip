@@ -58,30 +58,51 @@ export function resolveOutboundTarget(
   // Explicit DM prefixes always win
   if (to.startsWith("user:") || to.startsWith("dm:")) {
     const recipient = to.startsWith("user:") ? to.slice(5) : to.slice(3);
-    const asNum = Number(recipient);
+    if (!recipient) throw new Error("Zulip DM target must include a user ID or email address");
     return {
       type: "direct",
-      to: Number.isFinite(asNum) && String(asNum) === recipient
-        ? [asNum]
-        : [recipient],
+      to: isNumericId(recipient) ? [Number(recipient)] : [recipient],
     };
   }
 
+  const explicitStream = to.startsWith("stream:");
+  const rawTarget = explicitStream ? to.slice(7) : to;
+
   // If to contains "/" it encodes "stream/topic" — split it and treat as stream
-  const slashIdx = to.indexOf("/");
+  const slashIdx = rawTarget.indexOf("/");
   if (slashIdx !== -1) {
-    const streamPart = to.slice(0, slashIdx);
-    const topicPart = threadId ? String(threadId) : to.slice(slashIdx + 1);
+    const streamPart = rawTarget.slice(0, slashIdx);
+    if (!streamPart) throw new Error("Zulip stream target must include a stream ID or name");
+    const embeddedTopic = rawTarget.slice(slashIdx + 1);
+    const topicPart = threadId != null && String(threadId) !== "" ? String(threadId) : embeddedTopic;
     return { type: "stream", to: streamPart, topic: topicPart };
   }
 
-  // No threadId → DM
-  if (!threadId) {
-    return { type: "direct", to: [Number(to)] };
+  // A stream marker may never degrade into a DM when its topic is missing.
+  if (explicitStream) {
+    if (threadId == null) throw new Error("Zulip stream targets require a topic");
+    if (!rawTarget) throw new Error("Zulip stream target must include a stream ID or name");
+    return { type: "stream", to: rawTarget, topic: String(threadId) };
   }
 
-  // Stream message
-  return { type: "stream", to, topic: String(threadId) };
+  // A separate thread identity makes an otherwise bare target a stream.
+  if (threadId != null && String(threadId) !== "") {
+    if (!rawTarget) throw new Error("Zulip stream target must include a stream ID or name");
+    return { type: "stream", to: rawTarget, topic: String(threadId) };
+  }
+
+  // Bare targets are direct only when their identity is unambiguous.
+  if (isNumericId(rawTarget)) return { type: "direct", to: [Number(rawTarget)] };
+  if (isEmailAddress(rawTarget)) return { type: "direct", to: [rawTarget] };
+  throw new Error('Ambiguous Zulip target; use "user:<email_or_id>" or "stream:<name_or_id>/<topic>"');
+}
+
+function isNumericId(value: string): boolean {
+  return /^\d+$/.test(value) && Number.isSafeInteger(Number(value));
+}
+
+function isEmailAddress(value: string): boolean {
+  return /^[^@\s]+@[^@\s]+$/.test(value);
 }
 
 async function sendToZulip(

@@ -208,7 +208,7 @@ async function handleInboundMessage(
 
   const isGroup = msg.type === "stream";
   const streamId = msg.stream_id;
-  const topic = msg.subject;
+  const topic = isGroup && streamId != null ? (msg.subject ?? "") : undefined;
 
   // Build peer info
   let peerId: string;
@@ -245,9 +245,9 @@ async function handleInboundMessage(
   const senderName = msg.sender_full_name;
   const senderId = String(msg.sender_id);
   const senderEmail = msg.sender_email;
-  const to = isGroup && streamId != null
-    ? String(streamId)
-    : senderId;
+  const replyTarget = isGroup && streamId != null
+    ? `stream:${streamId}`
+    : `user:${senderId}`;
 
   const groupChannel = isGroup && typeof msg.display_recipient === "string"
     ? `#${msg.display_recipient}`
@@ -277,7 +277,7 @@ async function handleInboundMessage(
       threadId: topic,
     },
     route: { ...route, routeSessionKey: route.sessionKey },
-    reply: { to, messageThreadId: topic },
+    reply: { to: replyTarget, messageThreadId: topic },
     message: { rawBody: msg.content },
     access: { commands: { authorized: commandAuthorized } },
     extra: { GroupChannel: groupChannel, ThreadLabel: topic },
@@ -319,7 +319,7 @@ async function handleInboundMessage(
             await client.sendTypingNotification({
               op: "start",
               type: "direct",
-              to: [Number(to)],
+              to: [msg.sender_id],
             });
           }
         },
@@ -335,7 +335,7 @@ async function handleInboundMessage(
             await client.sendTypingNotification({
               op: "stop",
               type: "direct",
-              to: [Number(to)],
+              to: [msg.sender_id],
             });
           }
         },
@@ -351,7 +351,7 @@ async function handleInboundMessage(
         if (isGroup && streamId != null) {
           await client.sendMessage({ type: "stream", to: String(streamId), topic: topic ?? "", content: text });
         } else {
-          await client.sendMessage({ type: "direct", to: [Number(to)], content: text });
+          await client.sendMessage({ type: "direct", to: [msg.sender_id], content: text });
         }
       },
       onError: (err) => {

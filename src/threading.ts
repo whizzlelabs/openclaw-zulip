@@ -11,10 +11,10 @@ export const zulipThreadingAdapter: NonNullable<ChannelPlugin["threading"]> = {
   },
 
   resolveFocusedBinding({ context }) {
-    // Zulip: To = stream id, MessageThreadId = topic name
-    const streamId = context.To;
+    // Zulip: To = "stream:<id>", MessageThreadId = topic name
+    const streamId = context.To?.replace(/^stream:/, "");
     const topic = context.MessageThreadId ?? context.ThreadLabel;
-    if (!streamId || !topic) return null;
+    if (!streamId || topic == null) return null;
 
     const conversationId = `${streamId}/${topic}`;
     return {
