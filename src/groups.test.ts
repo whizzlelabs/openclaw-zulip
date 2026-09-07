@@ -238,4 +238,15 @@ describe("agent prompt account hint", () => {
     expect(hint?.join(" ")).toContain("bot account");
     expect(hint?.join(" ")).toContain("topic");
   });
+
+  it("does not repeat the stream-topic guidance in the account sentence", () => {
+    const hints = zulipAgentPromptAdapter.messageToolHints?.({
+      cfg: makeConfig({}),
+      accountId: ACCOUNT,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    expect(hints?.[0]).toBe("This is a Zulip bot account.");
+    expect(hints?.filter((hint) => hint.includes("require a topic"))).toHaveLength(1);
+  });
 });

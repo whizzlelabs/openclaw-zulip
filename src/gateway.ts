@@ -26,6 +26,7 @@ const CHANNEL_ID = "zulip";
 export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount>["gateway"]> = {
   async startAccount(ctx) {
     const { account, abortSignal, log } = ctx;
+    const runtime = getZulipRuntime();
 
     const client = new ZulipClient({
       serverUrl: account.serverUrl,
@@ -137,7 +138,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
         }
 
         try {
-          await handleInboundMessage(ctx, client, msg);
+          await handleInboundMessage(ctx, client, msg, runtime);
         } catch (err) {
           log?.error(`Error handling message ${msg.id}: ${err}`);
         }
@@ -201,6 +202,7 @@ async function handleInboundMessage(
   ctx: ChannelGatewayContext<ZulipResolvedAccount>,
   client: ZulipClient,
   msg: ZulipMessage,
+  runtime: ReturnType<typeof getZulipRuntime>,
 ): Promise<void> {
   const { cfg, account, log } = ctx;
 
@@ -213,7 +215,7 @@ async function handleInboundMessage(
   let chatType: "direct" | "group";
 
   if (isGroup && streamId != null) {
-    peerId = topic ? `${streamId}/${topic}` : String(streamId);
+    peerId = topic !== undefined ? `${streamId}/${topic}` : String(streamId);
     chatType = "group";
   } else {
     peerId = String(msg.sender_id);
@@ -227,14 +229,14 @@ async function handleInboundMessage(
   // Touch any active binding for this conversation so idle timeout resets
   touchZulipBindingByConversation(account.accountId, peerId);
 
-  const runtime = getZulipRuntime().channel;
+  const channelRuntime = runtime.channel;
 
-  const route = runtime.routing.resolveAgentRoute({
+  const route = channelRuntime.routing.resolveAgentRoute({
     cfg,
     channel: CHANNEL_ID,
     accountId: account.accountId,
     peer: { kind: chatType, id: peerId },
-    parentPeer: isGroup && streamId != null && topic
+    parentPeer: isGroup && streamId != null
       ? { kind: "group", id: String(streamId) }
       : undefined,
   });
@@ -254,8 +256,8 @@ async function handleInboundMessage(
   const commandAuthorized = await resolveZulipCommandAuthorization({
     account,
     message: msg,
-    shouldComputeAuth: runtime.commands.shouldComputeCommandAuthorized(msg.content, cfg),
-    readStoreAllowFrom: () => runtime.pairing.readAllowFromStore({
+    shouldComputeAuth: channelRuntime.commands.shouldComputeCommandAuthorized(msg.content, cfg),
+    readStoreAllowFrom: () => channelRuntime.pairing.readAllowFromStore({
       channel: CHANNEL_ID,
       accountId: account.accountId,
     }),
@@ -297,7 +299,7 @@ async function handleInboundMessage(
   let dispatchOk = true;
 
   // Core owns session recording and the reply/typing lifecycle for this route.
-  await runtime.inbound.dispatch({
+  await channelRuntime.inbound.dispatch({
     cfg,
     channel: CHANNEL_ID,
     accountId: account.accountId,
@@ -306,12 +308,12 @@ async function handleInboundMessage(
     replyPipeline: {
       typing: {
         start: async () => {
-          if (isGroup && streamId != null && topic) {
+          if (isGroup && streamId != null) {
             await client.sendTypingNotification({
               op: "start",
               type: "stream",
               streamId,
-              topic,
+              topic: topic ?? "",
             });
           } else {
             await client.sendTypingNotification({
@@ -322,12 +324,12 @@ async function handleInboundMessage(
           }
         },
         stop: async () => {
-          if (isGroup && streamId != null && topic) {
+          if (isGroup && streamId != null) {
             await client.sendTypingNotification({
               op: "stop",
               type: "stream",
               streamId,
-              topic,
+              topic: topic ?? "",
             });
           } else {
             await client.sendTypingNotification({
@@ -346,8 +348,8 @@ async function handleInboundMessage(
         const text = payload.text ?? "";
         if (!text.trim() && !payload.mediaUrl && !payload.mediaUrls?.length) return;
 
-        if (isGroup && streamId != null && topic) {
-          await client.sendMessage({ type: "stream", to: String(streamId), topic, content: text });
+        if (isGroup && streamId != null) {
+          await client.sendMessage({ type: "stream", to: String(streamId), topic: topic ?? "", content: text });
         } else {
           await client.sendMessage({ type: "direct", to: [Number(to)], content: text });
         }

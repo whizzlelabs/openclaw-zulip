@@ -98,6 +98,47 @@ describe("zulipMessagingAdapter", () => {
       });
       expect(direct).toMatchObject({ to: "200", chatType: "direct", peer: { id: "200" } });
     });
+
+    it("does not claim an exact session for a topic-less stream", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "stream:42",
+      });
+      expect(route).toMatchObject({
+        peer: { kind: "group", id: "42" },
+        recipientSessionExact: false,
+      });
+    });
+
+    it("preserves an empty topic as an exact stream session", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "stream:42/",
+      });
+      expect(route).toMatchObject({
+        peer: { kind: "group", id: "42/" },
+        threadId: "",
+        recipientSessionExact: true,
+      });
+    });
+
+    it("does not guess the session kind of an unresolved bare numeric target", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "200",
+      });
+      expect(route).toBeNull();
+    });
+
+    it("uses the normalized resolved target", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "stream:42/old",
+        resolvedTarget: { to: "general/new", kind: "channel", source: "directory" },
+      });
+      expect(route).toMatchObject({
+        to: "general",
+        threadId: "new",
+        peer: { kind: "group", id: "general/new" },
+        recipientSessionExact: false,
+      });
+    });
   });
 
   describe("targetResolver", () => {

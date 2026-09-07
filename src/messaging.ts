@@ -32,17 +32,21 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
   },
 
   resolveOutboundSessionRoute({ cfg, agentId, accountId, target, resolvedTarget, threadId }) {
+    const explicitKind = /^(?:dm|user|stream):/.test(target);
+    const canonicalGroupTarget = !explicitKind && target.includes("/");
+    if (!resolvedTarget && !explicitKind && !canonicalGroupTarget) return null;
+
     const explicitDm = target.startsWith("dm:") || target.startsWith("user:");
     const direct = explicitDm || resolvedTarget?.kind === "user";
-    const raw = target.replace(/^(?:dm|user|stream):/, "");
+    const raw = (resolvedTarget?.to ?? target).replace(/^(?:dm|user|stream):/, "");
     const { streamPart, topicPart } = splitStreamTopic(raw);
     const topic = direct ? undefined : (threadId != null ? String(threadId) : topicPart);
     const to = direct ? raw : streamPart;
     const chatType = direct ? "direct" : "group";
     return buildChannelOutboundSessionRoute({
       cfg, agentId, accountId, channel: "zulip", chatType,
-      peer: { kind: chatType, id: topic ? `${to}/${topic}` : to },
-      recipientSessionExact: isNumeric(to),
+      peer: { kind: chatType, id: topic !== undefined ? `${to}/${topic}` : to },
+      recipientSessionExact: isNumeric(to) && (direct || topic !== undefined),
       from: `zulip:${to}`,
       to,
       threadId: topic,
@@ -163,16 +167,16 @@ async function lookupStream(
 
 function channelTarget(name: string, topicPart: string | undefined) {
   return {
-    to: topicPart ? `${name}/${topicPart}` : name,
+    to: topicPart !== undefined ? `${name}/${topicPart}` : name,
     kind: "channel" as const,
-    display: topicPart ? `#${name} > ${topicPart}` : `#${name}`,
+    display: topicPart !== undefined ? `#${name} > ${topicPart}` : `#${name}`,
     source: "directory" as const,
   };
 }
 
 function numericStreamFallback(streamPart: string, topicPart: string | undefined) {
   return {
-    to: topicPart ? `${streamPart}/${topicPart}` : streamPart,
+    to: topicPart !== undefined ? `${streamPart}/${topicPart}` : streamPart,
     kind: "channel" as const,
     source: "normalized" as const,
   };
