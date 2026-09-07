@@ -1,4 +1,5 @@
-import { z } from "openclaw/plugin-sdk/zod";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
+import { z } from "zod";
 import {
   buildChannelConfigSchema,
   buildNestedDmConfigSchema,
@@ -56,7 +57,7 @@ const channelSchema = buildCatchallMultiAccountChannelSchema(accountSchema).exte
 // Config schema export
 // ---------------------------------------------------------------------------
 
-export const zulipConfigSchema = buildChannelConfigSchema(channelSchema, {
+export const zulipConfigSchema: NonNullable<ChannelPlugin["configSchema"]> = buildChannelConfigSchema(channelSchema, {
   uiHints: {
     serverUrl: { label: "Server URL", placeholder: "https://org.zulipchat.com" },
     email: { label: "Bot email", placeholder: "bot@org.zulipchat.com" },

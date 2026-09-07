@@ -41,18 +41,57 @@
   "openclaw": {
     "extensions": [
       "./dist/index.js"
-    ]
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.1"
+    },
+    "channel": {
+      "id": "zulip",
+      "setup": {
+        "fields": [
+          {
+            "key": "url",
+            "kind": "string",
+            "cli": {
+              "flags": "--url <url>",
+              "description": "Zulip server URL"
+            }
+          },
+          {
+            "key": "userId",
+            "kind": "string",
+            "cli": {
+              "flags": "--user-id <email>",
+              "description": "Zulip bot email"
+            }
+          },
+          {
+            "key": "token",
+            "kind": "string",
+            "sensitive": true,
+            "cli": {
+              "flags": "--token <key>",
+              "description": "Zulip API key"
+            }
+          }
+        ]
+      }
+    }
   },
   "devDependencies": {
+    "@types/node": "^22.19.0",
     "@typescript-eslint/eslint-plugin": "^8.58.0",
     "@typescript-eslint/parser": "^8.58.0",
     "eslint": "^10.2.0",
     "husky": "^9.1.7",
-    "openclaw": "2026.5.12",
+    "openclaw": "2026.9.1",
     "typescript": "^5.7.0",
     "vitest": "^4.1.2"
   },
   "peerDependencies": {
-    "openclaw": "^2026.5.12"
+    "openclaw": ">=2026.9.1 <2027.0.0"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
   }
 }

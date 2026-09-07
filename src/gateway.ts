@@ -1,13 +1,10 @@
-import type { ChannelPlugin, ChannelGatewayContext } from "openclaw/plugin-sdk";
-import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
-import { dispatchInboundReplyWithBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
+import type { ChannelGatewayContext } from "openclaw/plugin-sdk/channel-contract";
+import { buildChannelInboundEventContext } from "openclaw/plugin-sdk/channel-inbound";
 import {
   registerSessionBindingAdapter,
   unregisterSessionBindingAdapter,
 } from "openclaw/plugin-sdk/conversation-runtime";
-import {
-  resolveSenderCommandAuthorization,
-} from "openclaw/plugin-sdk/command-auth";
 import type { ZulipResolvedAccount } from "./types.js";
 import { getZulipSection } from "./types.js";
 import { ZulipClient, type ZulipMessage } from "./zulip-client.js";
@@ -16,7 +13,8 @@ import {
   clearZulipBindingStore,
   touchZulipBindingByConversation,
 } from "./bindings.js";
-import { resolveIngressDecision, resolveStreamName } from "./ingress.js";
+import { resolveIngressDecision, resolveStreamName, resolveZulipCommandAuthorization } from "./ingress.js";
+import { getZulipRuntime } from "./runtime.js";
 import {
   clearStreamRegistry,
   hydrateStreamNames,
@@ -28,6 +26,7 @@ const CHANNEL_ID = "zulip";
 export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount>["gateway"]> = {
   async startAccount(ctx) {
     const { account, abortSignal, log } = ctx;
+    const runtime = getZulipRuntime();
 
     const client = new ZulipClient({
       serverUrl: account.serverUrl,
@@ -139,7 +138,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
         }
 
         try {
-          await handleInboundMessage(ctx, client, msg);
+          await handleInboundMessage(ctx, client, msg, runtime);
         } catch (err) {
           log?.error(`Error handling message ${msg.id}: ${err}`);
         }
@@ -203,6 +202,7 @@ async function handleInboundMessage(
   ctx: ChannelGatewayContext<ZulipResolvedAccount>,
   client: ZulipClient,
   msg: ZulipMessage,
+  runtime: ReturnType<typeof getZulipRuntime>,
 ): Promise<void> {
   const { cfg, account, log } = ctx;
 
@@ -215,7 +215,7 @@ async function handleInboundMessage(
   let chatType: "direct" | "group";
 
   if (isGroup && streamId != null) {
-    peerId = topic ? `${streamId}/${topic}` : String(streamId);
+    peerId = topic !== undefined ? `${streamId}/${topic}` : String(streamId);
     chatType = "group";
   } else {
     peerId = String(msg.sender_id);
@@ -229,30 +229,16 @@ async function handleInboundMessage(
   // Touch any active binding for this conversation so idle timeout resets
   touchZulipBindingByConversation(account.accountId, peerId);
 
-  // Resolve route via channelRuntime
-  if (!ctx.channelRuntime) {
-    log?.warn("channelRuntime not available — cannot dispatch inbound message");
-    return;
-  }
+  const channelRuntime = runtime.channel;
 
-  // TODO: the SDK does not yet export a typed surface for channelRuntime, so we
-  // cast to `any` and lose type-checking across the runtime.* calls below. Drop
-  // this cast once openclaw publishes types for ChannelGatewayContext.channelRuntime.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const runtime = ctx.channelRuntime as any;
-
-  const route = runtime.routing.resolveAgentRoute({
+  const route = channelRuntime.routing.resolveAgentRoute({
     cfg,
     channel: CHANNEL_ID,
     accountId: account.accountId,
     peer: { kind: chatType, id: peerId },
-    parentPeer: isGroup && streamId != null && topic
+    parentPeer: isGroup && streamId != null
       ? { kind: "group", id: String(streamId) }
       : undefined,
-  });
-
-  const storePath = runtime.session.resolveStorePath(undefined, {
-    agentId: route.agentId,
   });
 
   // Build context payload
@@ -267,91 +253,34 @@ async function handleInboundMessage(
     ? `#${msg.display_recipient}`
     : undefined;
 
-  // Resolve command authorization from allowlists
-  const { commandAuthorized } = await resolveSenderCommandAuthorization({
-    cfg,
-    rawBody: msg.content,
-    isGroup,
-    dmPolicy: account.dmPolicy,
-    configuredAllowFrom: account.allowFrom.map(String),
-    senderId: senderEmail,
-    isSenderAllowed: (sid, allowFrom) =>
-      allowFrom.includes(sid) || allowFrom.includes(String(msg.sender_id)) || allowFrom.includes("*"),
-    readAllowFromStore: () =>
-      runtime.pairing.readAllowFromStore({
-        channel: CHANNEL_ID,
-        accountId: account.accountId,
-      }),
-    shouldComputeCommandAuthorized:
-      runtime.commands.shouldComputeCommandAuthorized,
-    resolveCommandAuthorizedFromAuthorizers:
-      runtime.commands.resolveCommandAuthorizedFromAuthorizers,
+  const commandAuthorized = await resolveZulipCommandAuthorization({
+    account,
+    message: msg,
+    shouldComputeAuth: channelRuntime.commands.shouldComputeCommandAuthorized(msg.content, cfg),
+    readStoreAllowFrom: () => channelRuntime.pairing.readAllowFromStore({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+    }),
   });
 
-  const ctxPayload = runtime.reply.finalizeInboundContext({
-    Body: msg.content,
-    From: senderEmail,
-    To: to,
-    SessionKey: route.sessionKey,
-    AccountId: account.accountId,
-    MessageSid: String(msg.id),
-    ChatType: chatType,
-    SenderName: senderName,
-    SenderId: senderEmail,
-    SenderUsername: senderEmail,
-    Timestamp: msg.timestamp * 1000,
-    Provider: CHANNEL_ID,
-    Surface: CHANNEL_ID,
-    OriginatingChannel: CHANNEL_ID,
-    OriginatingTo: to,
-    GroupChannel: groupChannel,
-    ThreadLabel: topic,
-    MessageThreadId: topic,
-    CommandAuthorized: commandAuthorized ?? false,
-  });
-
-  // ----- Typing indicators -----
-  const pipeline = createChannelReplyPipeline({
-    cfg,
-    agentId: route.agentId,
+  const ctxPayload = buildChannelInboundEventContext({
     channel: CHANNEL_ID,
     accountId: account.accountId,
-    typing: {
-      start: async () => {
-        if (isGroup && streamId != null && topic) {
-          await client.sendTypingNotification({
-            op: "start",
-            type: "stream",
-            streamId,
-            topic,
-          });
-        } else {
-          await client.sendTypingNotification({
-            op: "start",
-            type: "direct",
-            to: [Number(to)],
-          });
-        }
-      },
-      stop: async () => {
-        if (isGroup && streamId != null && topic) {
-          await client.sendTypingNotification({
-            op: "stop",
-            type: "stream",
-            streamId,
-            topic,
-          });
-        } else {
-          await client.sendTypingNotification({
-            op: "stop",
-            type: "direct",
-            to: [Number(to)],
-          });
-        }
-      },
-      onStartError: (err) => log?.debug?.(`Typing start error: ${err}`),
-      onStopError: (err) => log?.debug?.(`Typing stop error: ${err}`),
+    messageId: String(msg.id),
+    timestamp: msg.timestamp * 1000,
+    from: senderEmail,
+    sender: { id: senderEmail, name: senderName, username: senderEmail },
+    conversation: {
+      kind: chatType,
+      id: peerId,
+      parentId: isGroup && streamId != null ? String(streamId) : undefined,
+      threadId: topic,
     },
+    route: { ...route, routeSessionKey: route.sessionKey },
+    reply: { to, messageThreadId: topic },
+    message: { rawBody: msg.content },
+    access: { commands: { authorized: commandAuthorized } },
+    extra: { GroupChannel: groupChannel, ThreadLabel: topic },
   });
 
   // ----- Ack reactions -----
@@ -369,56 +298,68 @@ async function handleInboundMessage(
 
   let dispatchOk = true;
 
-  // Dispatch reply
-  await dispatchInboundReplyWithBase({
+  // Core owns session recording and the reply/typing lifecycle for this route.
+  await channelRuntime.inbound.dispatch({
     cfg,
     channel: CHANNEL_ID,
     accountId: account.accountId,
     route,
-    storePath,
     ctxPayload,
-    core: {
-      channel: {
-        session: {
-          recordInboundSession: runtime.session.recordInboundSession,
+    replyPipeline: {
+      typing: {
+        start: async () => {
+          if (isGroup && streamId != null) {
+            await client.sendTypingNotification({
+              op: "start",
+              type: "stream",
+              streamId,
+              topic: topic ?? "",
+            });
+          } else {
+            await client.sendTypingNotification({
+              op: "start",
+              type: "direct",
+              to: [Number(to)],
+            });
+          }
         },
-        reply: {
-          dispatchReplyWithBufferedBlockDispatcher:
-            runtime.reply.dispatchReplyWithBufferedBlockDispatcher,
+        stop: async () => {
+          if (isGroup && streamId != null) {
+            await client.sendTypingNotification({
+              op: "stop",
+              type: "stream",
+              streamId,
+              topic: topic ?? "",
+            });
+          } else {
+            await client.sendTypingNotification({
+              op: "stop",
+              type: "direct",
+              to: [Number(to)],
+            });
+          }
         },
+        onStartError: (err) => log?.debug?.(`Typing start error: ${err}`),
+        onStopError: (err) => log?.debug?.(`Typing stop error: ${err}`),
       },
     },
-    replyOptions: {
-      onReplyStart: pipeline.typingCallbacks?.onReplyStart,
-      onTypingCleanup: pipeline.typingCallbacks?.onCleanup,
-    },
-    deliver: async (payload) => {
-      const text = payload.text ?? "";
-      if (!text.trim() && !payload.mediaUrl && !payload.mediaUrls?.length) return;
+    delivery: {
+      deliver: async (payload) => {
+        const text = payload.text ?? "";
+        if (!text.trim() && !payload.mediaUrl && !payload.mediaUrls?.length) return;
 
-      const threadId = topic;
-      const targetTo = to;
-
-      if (isGroup && streamId != null && threadId) {
-        await client.sendMessage({
-          type: "stream",
-          to: String(streamId),
-          topic: threadId,
-          content: text,
-        });
-      } else {
-        await client.sendMessage({
-          type: "direct",
-          to: [Number(targetTo)],
-          content: text,
-        });
-      }
+        if (isGroup && streamId != null) {
+          await client.sendMessage({ type: "stream", to: String(streamId), topic: topic ?? "", content: text });
+        } else {
+          await client.sendMessage({ type: "direct", to: [Number(to)], content: text });
+        }
+      },
+      onError: (err) => {
+        dispatchOk = false;
+        log?.error(`Dispatch error: ${err}`);
+      },
     },
-    onRecordError: (err) => log?.error(`Session record error: ${err}`),
-    onDispatchError: (err) => {
-      dispatchOk = false;
-      log?.error(`Dispatch error: ${err}`);
-    },
+    record: { onRecordError: (err) => log?.error(`Session record error: ${err}`) },
   });
 
   // ----- Finalize ack reactions -----

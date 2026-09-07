@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { DmPolicy, OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 
 // ---------------------------------------------------------------------------
 // Account mode
@@ -26,7 +26,7 @@ export type ZulipAccountConfig = {
   serverUrl?: string;
   email?: string;
   apiKey?: string;
-  dmPolicy?: string;
+  dmPolicy?: DmPolicy;
   allowFrom?: Array<string | number>;
   replyToMode?: string;
   streams?: Record<string, ZulipStreamConfig>;
@@ -66,7 +66,7 @@ export type ZulipResolvedAccount = {
   apiKey: string;
   enabled: boolean;
   configured: boolean;
-  dmPolicy: string;
+  dmPolicy: DmPolicy;
   allowFrom: Array<string | number>;
   replyToMode: string;
   streams: Record<string, ZulipStreamConfig>;

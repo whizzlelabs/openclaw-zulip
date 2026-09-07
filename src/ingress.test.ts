@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { resolveIngressDecision, resolveStreamName } from "./ingress.js";
+import { describe, it, expect, vi } from "vitest";
+import { resolveIngressDecision, resolveStreamName, resolveZulipCommandAuthorization } from "./ingress.js";
 import type { ZulipResolvedAccount, ZulipStreamConfig } from "./types.js";
 import type { ZulipMessage } from "./zulip-client.js";
 
@@ -217,5 +217,50 @@ describe("resolveStreamName", () => {
 
   it("returns undefined for DMs, where display_recipient is a user list", () => {
     expect(resolveStreamName(dmMessage())).toBeUndefined();
+  });
+});
+
+describe("Zulip command authorization", () => {
+  it.each([
+    ["numeric owner", [200], true],
+    ["email owner", ["someone@example.com"], true],
+    ["wildcard owner", ["*"], true],
+    ["different owner", [201], false],
+    ["no owners", [], false],
+  ] as const)("preserves %s access in DMs and streams", async (_label, allowFrom, authorized) => {
+    for (const message of [dmMessage(), streamMessage()]) {
+      expect(await resolveZulipCommandAuthorization({
+        account: makeAccount({ allowFrom: [...allowFrom] }),
+        message,
+        shouldComputeAuth: true,
+        readStoreAllowFrom: async () => [],
+      })).toBe(authorized);
+    }
+  });
+
+  it.each([
+    ["pairing", true],
+    ["allowlist", false],
+    ["open", false],
+  ] as const)("respects the %s policy when reading pairing approvals", async (dmPolicy, authorized) => {
+    const readStoreAllowFrom = vi.fn(async () => ["200"]);
+    const account = makeAccount({ dmPolicy });
+    expect(await resolveZulipCommandAuthorization({
+      account, message: dmMessage(), shouldComputeAuth: true, readStoreAllowFrom,
+    })).toBe(authorized);
+    expect(readStoreAllowFrom).toHaveBeenCalledTimes(authorized ? 1 : 0);
+    readStoreAllowFrom.mockClear();
+    expect(await resolveZulipCommandAuthorization({
+      account, message: streamMessage(), shouldComputeAuth: true, readStoreAllowFrom,
+    })).toBe(false);
+    expect(readStoreAllowFrom).not.toHaveBeenCalled();
+  });
+
+  it("does not grant commands for ordinary messages or failed pairing reads", async () => {
+    const readStoreAllowFrom = vi.fn(async () => { throw new Error("store unavailable"); });
+    const params = { account: makeAccount(), message: dmMessage(), readStoreAllowFrom };
+    expect(await resolveZulipCommandAuthorization({ ...params, shouldComputeAuth: false })).toBe(false);
+    expect(readStoreAllowFrom).not.toHaveBeenCalled();
+    expect(await resolveZulipCommandAuthorization({ ...params, shouldComputeAuth: true })).toBe(false);
   });
 });

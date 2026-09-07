@@ -75,6 +75,23 @@ describe("ZulipClient", () => {
       expect(body.get("content")).toBe("Hello world");
     });
 
+    it("preserves an empty stream topic", async () => {
+      const fetchSpy = mockFetch({ result: "success", id: 100 });
+      globalThis.fetch = fetchSpy;
+
+      const client = new ZulipClient(config);
+      await client.sendMessage({
+        type: "stream",
+        to: "general",
+        topic: "",
+        content: "General chat",
+      });
+
+      const body = new URLSearchParams(fetchSpy.mock.calls[0][1].body);
+      expect(body.has("topic")).toBe(true);
+      expect(body.get("topic")).toBe("");
+    });
+
     it("sends a DM with JSON array of user ids", async () => {
       const fetchSpy = mockFetch({ result: "success", id: 50 });
       globalThis.fetch = fetchSpy;
@@ -89,6 +106,27 @@ describe("ZulipClient", () => {
       const body = new URLSearchParams(fetchSpy.mock.calls[0][1].body);
       expect(body.get("type")).toBe("direct");
       expect(body.get("to")).toBe("[123,456]");
+    });
+  });
+
+  describe("sendTypingNotification", () => {
+    it("preserves an empty stream topic", async () => {
+      const fetchSpy = mockFetch({ result: "success" });
+      globalThis.fetch = fetchSpy;
+
+      const client = new ZulipClient(config);
+      await client.sendTypingNotification({
+        op: "start",
+        type: "stream",
+        streamId: 42,
+        topic: "",
+      });
+
+      const body = new URLSearchParams(fetchSpy.mock.calls[0][1].body);
+      expect(body.get("type")).toBe("stream");
+      expect(body.get("stream_id")).toBe("42");
+      expect(body.has("topic")).toBe(true);
+      expect(body.get("topic")).toBe("");
     });
   });
 

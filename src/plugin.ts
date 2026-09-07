@@ -4,7 +4,7 @@ import type { ZulipResolvedAccount } from "./types.js";
 import type { ZulipProbe } from "./status.js";
 import { zulipConfigAdapter } from "./config.js";
 import { zulipConfigSchema } from "./config-schema.js";
-import { zulipSetupAdapter } from "./setup.js";
+import { zulipSetupContract } from "./setup.js";
 import { zulipSecurityAdapter } from "./security.js";
 import { zulipGatewayAdapter } from "./gateway.js";
 import { zulipOutboundAdapter } from "./outbound.js";
@@ -46,7 +46,7 @@ export const zulipPlugin: ChannelPlugin<ZulipResolvedAccount, ZulipProbe> = crea
     },
     config: zulipConfigAdapter,
     configSchema: zulipConfigSchema,
-    setup: zulipSetupAdapter,
+    setupContract: zulipSetupContract,
     status: zulipStatusAdapter,
     gateway: zulipGatewayAdapter,
     messaging: zulipMessagingAdapter,

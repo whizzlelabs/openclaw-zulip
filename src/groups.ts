@@ -64,8 +64,4 @@ export const zulipGroupsAdapter: NonNullable<ChannelPlugin["groups"]> = {
     return resolveStreamConfig(account, { streamId, streamName })?.requireMention;
   },
 
-  resolveGroupIntroHint({ cfg, accountId }) {
-    const account = resolveZulipAccount(cfg as CoreConfig, accountId);
-    return `This is a Zulip ${account.mode === "user" ? "user" : "bot"} account. Messages in streams require a topic.`;
-  },
 };

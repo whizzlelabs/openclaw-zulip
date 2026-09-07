@@ -1,3 +1,4 @@
+import { resolveChannelMessageIngress } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import type { ZulipResolvedAccount } from "./types.js";
 import type { ZulipMessage } from "./zulip-client.js";
 import { resolveStreamConfig } from "./stream-registry.js";
@@ -90,4 +91,30 @@ export function resolveIngressDecision(input: IngressInput): IngressDecision {
   }
 
   return { action: "process" };
+}
+
+/** Command authorization is separate from the plugin's existing message admission policy. */
+export async function resolveZulipCommandAuthorization(params: {
+  account: ZulipResolvedAccount;
+  message: ZulipMessage;
+  shouldComputeAuth: boolean;
+  readStoreAllowFrom: () => Promise<string[]>;
+}): Promise<boolean> {
+  if (!params.shouldComputeAuth) return false;
+  const { account, message } = params;
+  const isGroup = message.type === "stream";
+  const result = await resolveChannelMessageIngress({
+    channelId: "zulip",
+    accountId: account.accountId,
+    identity: { primary: {}, aliases: [{ key: "email", kind: "email", sensitivity: "pii" }] },
+    subject: { stableId: message.sender_id, aliases: { email: message.sender_email } },
+    conversation: { kind: isGroup ? "group" : "direct", id: String(message.stream_id ?? message.sender_id) },
+    event: { kind: "message", authMode: "command", mayPair: false },
+    policy: { dmPolicy: account.dmPolicy, groupPolicy: "open" },
+    allowFrom: account.allowFrom,
+    // Pairing-store entries authorize DMs, never commands in public streams.
+    readStoreAllowFrom: params.readStoreAllowFrom,
+    command: { useAccessGroups: true, allowTextCommands: true, hasControlCommand: true },
+  });
+  return result.commandAccess.authorized;
 }

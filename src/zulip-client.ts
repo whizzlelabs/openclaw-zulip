@@ -161,7 +161,7 @@ export class ZulipClient {
       to: typeof params.to === "string" ? params.to : JSON.stringify(params.to),
       content: params.content,
     };
-    if (params.topic) body.topic = params.topic;
+    if (params.topic !== undefined) body.topic = params.topic;
 
     const res = await this.request<{ result: string; id: number }>(
       "POST",
@@ -337,7 +337,7 @@ export class ZulipClient {
     };
     if (params.to) body.to = JSON.stringify(params.to);
     if (params.streamId !== undefined) body.stream_id = String(params.streamId);
-    if (params.topic) body.topic = params.topic;
+    if (params.topic !== undefined) body.topic = params.topic;
     await this.request("POST", "/typing", body);
   }
 

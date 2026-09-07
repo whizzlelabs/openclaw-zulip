@@ -1,9 +1,8 @@
-import type { ChannelPlugin } from "openclaw/plugin-sdk";
+import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
+// ACP bindings still require this public API; the narrower host facades are private.
 import type {
   SessionBindingAdapter,
   SessionBindingRecord,
-  SessionBindingBindInput,
-  SessionBindingUnbindInput,
 } from "openclaw/plugin-sdk/conversation-runtime";
 
 type ChannelConfiguredBindingProvider = NonNullable<ChannelPlugin["bindings"]>;
@@ -104,7 +103,7 @@ export function createZulipSessionBindingAdapter(
       bindSupported: true,
       unbindSupported: true,
     },
-    bind: async (input: SessionBindingBindInput): Promise<SessionBindingRecord | null> => {
+    bind: async (input): Promise<SessionBindingRecord | null> => {
       if (input.conversation.channel !== "zulip" || input.conversation.accountId !== accountId) {
         return null;
       }
@@ -145,7 +144,7 @@ export function createZulipSessionBindingAdapter(
       const record = store.get(bindingId);
       if (record) record.lastActivityAt = at ?? Date.now();
     },
-    unbind: async (input: SessionBindingUnbindInput): Promise<SessionBindingRecord[]> => {
+    unbind: async (input): Promise<SessionBindingRecord[]> => {
       const store = getZulipBindingStore(accountId);
       const removed: SessionBindingRecord[] = [];
       if (input.bindingId) {

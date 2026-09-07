@@ -13,6 +13,15 @@ A clean-room [OpenClaw](https://github.com/openclaw/openclaw) channel plugin for
 
 ## Installation
 
+Requires OpenClaw **2026.9.1 or later** in the 2026 release line. The previously
+published plugin is unchanged until the next plugin release.
+
+ACP topic bindings still use the public `conversation-runtime` SDK export.
+Although deprecated, its suggested thread-binding replacements are private
+host facades, not supported third-party SDK exports. Removing this last import
+requires a public binding registration API from OpenClaw; progress is tracked
+in [#69](https://github.com/whizzlelabs/openclaw-zulip/issues/69).
+
 ```bash
 openclaw plugins install openclaw-zulip
 ```

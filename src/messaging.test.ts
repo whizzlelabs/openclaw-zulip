@@ -73,45 +73,71 @@ describe("zulipMessagingAdapter", () => {
     });
   });
 
-  describe("parseExplicitTarget", () => {
-    it("parses dm: prefix", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "dm:123" });
-      expect(result).toEqual({ to: "123", chatType: "direct" });
+  describe("outbound session routing", () => {
+    it.each([
+      ["dm:123", "123", undefined, "direct"],
+      ["user:alice@example.com", "alice@example.com", undefined, "direct"],
+      ["stream:42", "42", undefined, "group"],
+      ["stream:42/hello", "42", "hello", "group"],
+      ["stream:Jeeves:agent-output", "Jeeves", "agent-output", "group"],
+      ["stream:42/topic:with:colons", "42", "topic:with:colons", "group"],
+      ["42/path/to/topic", "42", "path/to/topic", "group"],
+    ] as const)("preserves the destination and topic for %s", async (target, to, threadId, chatType) => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({ cfg: {}, agentId: "main", target });
+      expect(route).toMatchObject({ to, chatType, peer: { kind: chatType, id: threadId ? `${to}/${threadId}` : to } });
+      expect(route?.threadId).toBe(threadId);
     });
 
-    it("parses stream: prefix without topic", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:42" });
-      expect(result).toEqual({ to: "42", chatType: "group" });
+    it("uses the explicit topic and keeps resolved DM targets direct", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "42/old", threadId: "new",
+      });
+      expect(route).toMatchObject({ to: "42", threadId: "new", peer: { id: "42/new" } });
+      const direct = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "200", resolvedTarget: { to: "200", kind: "user", source: "normalized" },
+      });
+      expect(direct).toMatchObject({ to: "200", chatType: "direct", peer: { id: "200" } });
     });
 
-    it("parses stream: prefix with topic (slash separator)", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:42/hello" });
-      expect(result).toEqual({ to: "42", threadId: "hello", chatType: "group" });
+    it("does not claim an exact session for a topic-less stream", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "stream:42",
+      });
+      expect(route).toMatchObject({
+        peer: { kind: "group", id: "42" },
+        recipientSessionExact: false,
+      });
     });
 
-    it("parses stream: prefix with topic (colon separator)", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:Jeeves:agent-output" });
-      expect(result).toEqual({ to: "Jeeves", threadId: "agent-output", chatType: "group" });
+    it("preserves an empty topic as an exact stream session", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "stream:42/",
+      });
+      expect(route).toMatchObject({
+        peer: { kind: "group", id: "42/" },
+        threadId: "",
+        recipientSessionExact: true,
+      });
     });
 
-    it("prefers slash over colon when both present", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "stream:42/topic:with:colons" });
-      expect(result).toEqual({ to: "42", threadId: "topic:with:colons", chatType: "group" });
+    it("does not guess the session kind of an unresolved bare numeric target", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "200",
+      });
+      expect(route).toBeNull();
     });
 
-    it("parses user: prefix with numeric ID", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "user:8" });
-      expect(result).toEqual({ to: "8", chatType: "direct" });
-    });
-
-    it("parses user: prefix with email address", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "user:alice@example.com" });
-      expect(result).toEqual({ to: "alice@example.com", chatType: "direct" });
-    });
-
-    it("returns null for unknown prefix", () => {
-      const result = zulipMessagingAdapter.parseExplicitTarget!({ raw: "unknown:123" });
-      expect(result).toBeNull();
+    it("uses the normalized resolved target", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", target: "stream:42/old",
+        resolvedTarget: { to: "general/new", kind: "channel", source: "directory" },
+      });
+      expect(route).toMatchObject({
+        to: "general",
+        threadId: "new",
+        peer: { kind: "group", id: "general/new" },
+        recipientSessionExact: false,
+      });
     });
   });
 

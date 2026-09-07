@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { zulipAgentPromptAdapter } from "./agent-prompt.js";
 import { zulipGroupsAdapter } from "./groups.js";
 import { rememberStreamName, clearStreamRegistry } from "./stream-registry.js";
 import type { CoreConfig, ZulipStreamConfig } from "./types.js";
@@ -226,15 +227,26 @@ describe("resolveRequireMention — stream names containing punctuation", () => 
   });
 });
 
-describe("resolveGroupIntroHint", () => {
+describe("agent prompt account hint", () => {
   it("describes a bot account", () => {
-    const hint = zulipGroupsAdapter.resolveGroupIntroHint?.({
+    const hint = zulipAgentPromptAdapter.messageToolHints?.({
       cfg: makeConfig({}),
       accountId: ACCOUNT,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
-    expect(hint).toContain("bot account");
-    expect(hint).toContain("topic");
+    expect(hint?.join(" ")).toContain("bot account");
+    expect(hint?.join(" ")).toContain("topic");
+  });
+
+  it("does not repeat the stream-topic guidance in the account sentence", () => {
+    const hints = zulipAgentPromptAdapter.messageToolHints?.({
+      cfg: makeConfig({}),
+      accountId: ACCOUNT,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    expect(hints?.[0]).toBe("This is a Zulip bot account.");
+    expect(hints?.filter((hint) => hint.includes("require a topic"))).toHaveLength(1);
   });
 });
