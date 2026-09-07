@@ -18,7 +18,7 @@ A clean-room OpenClaw channel plugin for Zulip, built with the OpenClaw Plugin S
 **Differentiator:** ACP topic bindings — bind ACP agent sessions to Zulip topics.
 
 **Status:** Core implementation complete (Phases 1–4). All adapter surfaces are wired and functional.
-Published to npm as `openclaw-zulip` (currently 0.2.x); work is now incremental fixes and hardening.
+Published to npm as `openclaw-zulip` (currently 0.3.x); work is now incremental fixes and hardening.
 
 ## Repository Structure
 
