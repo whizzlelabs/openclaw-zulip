@@ -31,6 +31,8 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
     return undefined;
   },
 
+  preserveHeartbeatThreadIdForGroupRoute: true,
+
   resolveOutboundSessionRoute({ cfg, agentId, accountId, target, resolvedTarget, threadId }) {
     const explicitKind = /^(?:dm|user|stream):/.test(target);
     const canonicalGroupTarget = !explicitKind && target.includes("/");
@@ -79,7 +81,7 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
       // DM targets
       if (input.startsWith("dm:") || input.startsWith("user:")) {
         const recipient = input.startsWith("dm:") ? input.slice(3) : input.slice(5);
-        return { to: recipient, kind: "user" as const, source: "normalized" as const };
+        return { to: `user:${recipient}`, kind: "user" as const, source: "normalized" as const };
       }
 
       // Stream targets
@@ -96,21 +98,23 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
       // targets when the agent replies to / acts on the current conversation
       // via the message or react tool: streams are "<stream_id>[/<topic>]" and
       // DMs are "<user_id>". A bare numeric is ambiguous (a stream id and a
-      // user id can collide), so honour preferredKind: only treat it as a DM
-      // when the runtime hints "user" and there is no topic (DMs have no
-      // topics). Otherwise resolve it as a stream id.
+      // user id can collide). A topic makes it a stream; without a topic it is
+      // a DM unless the runtime explicitly requires a group, in which case the
+      // missing topic fails closed.
       const slashIdx = input.indexOf("/");
       const head = slashIdx === -1 ? input : input.slice(0, slashIdx);
       const topicPart = slashIdx === -1 ? undefined : input.slice(slashIdx + 1);
       if (isNumeric(head)) {
-        if (preferredKind === "user" && topicPart === undefined) {
-          return { to: head, kind: "user" as const, source: "normalized" as const };
+        if (topicPart === undefined) {
+          if (preferredKind === "user") {
+            return { to: `user:${head}`, kind: "user" as const, source: "normalized" as const };
+          }
+          if (preferredKind !== "group" && preferredKind !== "channel") {
+            throw new Error('Ambiguous Zulip target; use "user:<id>" or "stream:<id>/<topic>"');
+          }
         }
         const resolved = await lookupStream(cfg, accountId, head, topicPart);
         if (resolved) return resolved;
-        if (preferredKind === "user") {
-          return { to: head, kind: "user" as const, source: "normalized" as const };
-        }
         return numericStreamFallback(head, topicPart);
       }
 
@@ -167,7 +171,7 @@ async function lookupStream(
 
 function channelTarget(name: string, topicPart: string | undefined) {
   return {
-    to: topicPart !== undefined ? `${name}/${topicPart}` : name,
+    to: topicPart !== undefined ? `stream:${name}/${topicPart}` : `stream:${name}`,
     kind: "channel" as const,
     display: topicPart !== undefined ? `#${name} > ${topicPart}` : `#${name}`,
     source: "directory" as const,
@@ -176,7 +180,7 @@ function channelTarget(name: string, topicPart: string | undefined) {
 
 function numericStreamFallback(streamPart: string, topicPart: string | undefined) {
   return {
-    to: topicPart !== undefined ? `${streamPart}/${topicPart}` : streamPart,
+    to: topicPart !== undefined ? `stream:${streamPart}/${topicPart}` : `stream:${streamPart}`,
     kind: "channel" as const,
     source: "normalized" as const,
   };

@@ -1,15 +1,22 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { zulipMessagingAdapter } from "./messaging.js";
+import { resolveOutboundTarget } from "./outbound.js";
 
-vi.mock("./outbound.js", () => ({
-  buildClient: vi.fn(),
-}));
+vi.mock("./outbound.js", async () => {
+  const actual = await vi.importActual<typeof import("./outbound.js")>("./outbound.js");
+  return { ...actual, buildClient: vi.fn() };
+});
 
 afterEach(() => {
+  vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
 describe("zulipMessagingAdapter", () => {
+  it("preserves heartbeat topics for group routes", () => {
+    expect(zulipMessagingAdapter.preserveHeartbeatThreadIdForGroupRoute).toBe(true);
+  });
+
   describe("resolveSessionConversation", () => {
     it("returns bare id for stream without topic", () => {
       const result = zulipMessagingAdapter.resolveSessionConversation!({
@@ -94,7 +101,7 @@ describe("zulipMessagingAdapter", () => {
       });
       expect(route).toMatchObject({ to: "42", threadId: "new", peer: { id: "42/new" } });
       const direct = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
-        cfg: {}, agentId: "main", target: "200", resolvedTarget: { to: "200", kind: "user", source: "normalized" },
+        cfg: {}, agentId: "main", target: "user:200", resolvedTarget: { to: "user:200", kind: "user", source: "normalized" },
       });
       expect(direct).toMatchObject({ to: "200", chatType: "direct", peer: { id: "200" } });
     });
@@ -130,7 +137,7 @@ describe("zulipMessagingAdapter", () => {
     it("uses the normalized resolved target", async () => {
       const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
         cfg: {}, agentId: "main", target: "stream:42/old",
-        resolvedTarget: { to: "general/new", kind: "channel", source: "directory" },
+        resolvedTarget: { to: "stream:general/new", kind: "channel", source: "directory" },
       });
       expect(route).toMatchObject({
         to: "general",
@@ -174,14 +181,48 @@ describe("zulipMessagingAdapter", () => {
         const result = await resolver.resolveTarget!({
           cfg: baseCfg, input: "dm:42", normalized: "dm:42",
         });
-        expect(result).toEqual({ to: "42", kind: "user", source: "normalized" });
+        expect(result).toEqual({ to: "user:42", kind: "user", source: "normalized" });
       });
 
-      it("resolves user: target with email", async () => {
+      it("preserves an email DM through target resolution and outbound parsing", async () => {
         const result = await resolver.resolveTarget!({
           cfg: baseCfg, input: "user:alice@example.com", normalized: "user:alice@example.com",
         });
-        expect(result).toEqual({ to: "alice@example.com", kind: "user", source: "normalized" });
+        expect(result).toEqual({ to: "user:alice@example.com", kind: "user", source: "normalized" });
+        expect(resolveOutboundTarget(result!.to)).toEqual({
+          type: "direct",
+          to: ["alice@example.com"],
+        });
+      });
+
+      it("resolves an explicit topic-less stream for channel references", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreamById: async () => ({ stream_id: 42, name: "general", description: "", invite_only: false }),
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "stream:42", normalized: "stream:42",
+        });
+        expect(result).toEqual({
+          to: "stream:general", kind: "channel", display: "#general", source: "directory",
+        });
+      });
+
+      it("resolves a topic-less stream name for channel references", async () => {
+        const { buildClient } = await import("./outbound.js");
+        vi.mocked(buildClient).mockReturnValue({
+          getStreams: async () => [
+            { stream_id: 42, name: "general", description: "", invite_only: false },
+          ],
+        } as any);
+
+        const result = await resolver.resolveTarget!({
+          cfg: baseCfg, input: "stream:general", normalized: "stream:general",
+        });
+        expect(result).toEqual({
+          to: "stream:general", kind: "channel", display: "#general", source: "directory",
+        });
       });
 
       it("resolves numeric stream ID with topic via API", async () => {
@@ -194,7 +235,7 @@ describe("zulipMessagingAdapter", () => {
           cfg: baseCfg, input: "stream:42/hello", normalized: "stream:42/hello",
         });
         expect(result).toEqual({
-          to: "general/hello",
+          to: "stream:general/hello",
           kind: "channel",
           display: "#general > hello",
           source: "directory",
@@ -210,7 +251,7 @@ describe("zulipMessagingAdapter", () => {
         const result = await resolver.resolveTarget!({
           cfg: baseCfg, input: "stream:42/hello", normalized: "stream:42/hello",
         });
-        expect(result).toEqual({ to: "42/hello", kind: "channel", source: "normalized" });
+        expect(result).toEqual({ to: "stream:42/hello", kind: "channel", source: "normalized" });
       });
 
       it("resolves stream name via API", async () => {
@@ -225,7 +266,7 @@ describe("zulipMessagingAdapter", () => {
           cfg: baseCfg, input: "stream:Jeeves:agent-output", normalized: "stream:Jeeves:agent-output",
         });
         expect(result).toEqual({
-          to: "Jeeves/agent-output",
+          to: "stream:Jeeves/agent-output",
           kind: "channel",
           display: "#Jeeves > agent-output",
           source: "directory",
@@ -253,7 +294,7 @@ describe("zulipMessagingAdapter", () => {
 
       // Bare conversation ids (no scheme prefix) — the format the plugin's own
       // session/conversation ids use, which the agent passes back as a target.
-      it("resolves a bare numeric stream id (preferredKind group) via API", async () => {
+      it("resolves a topic-less bare numeric when a group reference is required", async () => {
         const { buildClient } = await import("./outbound.js");
         vi.mocked(buildClient).mockReturnValue({
           getStreamById: async () => ({ stream_id: 7, name: "Jeeves", description: "", invite_only: false }),
@@ -263,25 +304,14 @@ describe("zulipMessagingAdapter", () => {
           cfg: baseCfg, input: "7", normalized: "7", preferredKind: "group",
         } as any);
         expect(result).toEqual({
-          to: "Jeeves", kind: "channel", display: "#Jeeves", source: "directory",
+          to: "stream:Jeeves", kind: "channel", display: "#Jeeves", source: "directory",
         });
       });
 
-      // Collision case: a bare numeric with no preferredKind hint is ambiguous
-      // (a stream id and a user id can share a value). The resolver deliberately
-      // treats it as a stream id — pin that so the behavior can't drift silently.
-      it("resolves an unhinted bare numeric id as a stream (no preferredKind)", async () => {
-        const { buildClient } = await import("./outbound.js");
-        vi.mocked(buildClient).mockReturnValue({
-          getStreamById: async () => ({ stream_id: 9, name: "general", description: "", invite_only: false }),
-        } as any);
-
-        const result = await resolver.resolveTarget!({
+      it("rejects an unhinted bare numeric id as ambiguous", async () => {
+        await expect(resolver.resolveTarget!({
           cfg: baseCfg, input: "9", normalized: "9",
-        });
-        expect(result).toEqual({
-          to: "general", kind: "channel", display: "#general", source: "directory",
-        });
+        })).rejects.toThrow("Ambiguous Zulip target");
       });
 
       it("resolves a bare numeric stream id with topic", async () => {
@@ -294,7 +324,7 @@ describe("zulipMessagingAdapter", () => {
           cfg: baseCfg, input: "3/daily", normalized: "3/daily",
         });
         expect(result).toEqual({
-          to: "general/daily", kind: "channel", display: "#general > daily", source: "directory",
+          to: "stream:general/daily", kind: "channel", display: "#general > daily", source: "directory",
         });
       });
 
@@ -302,19 +332,14 @@ describe("zulipMessagingAdapter", () => {
         const result = await resolver.resolveTarget!({
           cfg: baseCfg, input: "9", normalized: "9", preferredKind: "user",
         } as any);
-        expect(result).toEqual({ to: "9", kind: "user", source: "normalized" });
+        expect(result).toEqual({ to: "user:9", kind: "user", source: "normalized" });
       });
 
       it("falls back to a DM for an unknown bare id when preferredKind is user", async () => {
-        const { buildClient } = await import("./outbound.js");
-        vi.mocked(buildClient).mockReturnValue({
-          getStreamById: async () => { throw new Error("not found"); },
-        } as any);
-
         const result = await resolver.resolveTarget!({
           cfg: baseCfg, input: "999", normalized: "999", preferredKind: "user",
         } as any);
-        expect(result).toEqual({ to: "999", kind: "user", source: "normalized" });
+        expect(result).toEqual({ to: "user:999", kind: "user", source: "normalized" });
       });
 
       it("returns null for a bare non-numeric token", async () => {

@@ -28,8 +28,8 @@ export const zulipGroupsAdapter: NonNullable<ChannelPlugin["groups"]> = {
     //
     // The SDK derives groupId from the group session resolution, which falls
     // back to ctx.From whenever it cannot parse a channel-qualified
-    // OriginatingTo — and this plugin sends a bare "<stream_id>", which
-    // resolveOriginatingGroupTargetId() rejects for having no ":" separator.
+    // OriginatingTo — and this plugin sends "stream:<stream_id>", whose prefix
+    // is a Zulip target kind rather than the channel provider.
     // So at runtime groupId is the *sender's email*, not the stream. The SDK
     // passes the stream name separately as groupChannel ("#<name>", set by the
     // gateway), which is what the bundled channels key off for the same reason.

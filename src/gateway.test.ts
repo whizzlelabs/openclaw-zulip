@@ -35,10 +35,10 @@ describe("gateway channel turn dispatch", () => {
   });
 
   it.each([
-    { label: "stream", type: "stream", topic: "topic/with/slash" },
-    { label: "empty-topic stream", type: "stream", topic: "" },
-    { label: "private message", type: "private", topic: undefined },
-  ] as const)("preserves $label routing, delivery and typing", async ({ type, topic }) => {
+    { label: "stream", type: "stream", topic: "topic/with/slash", subject: "topic/with/slash" },
+    { label: "empty-topic stream", type: "stream", topic: "", subject: "" },
+    { label: "private message with an empty subject", type: "private", topic: undefined, subject: "" },
+  ] as const)("preserves $label routing, delivery and typing", async ({ type, topic, subject }) => {
     const abort = new AbortController();
     const account: ZulipResolvedAccount = {
       accountId: "default", mode: "bot", serverUrl: "https://zulip.example.com",
@@ -48,7 +48,8 @@ describe("gateway channel turn dispatch", () => {
     const message: ZulipMessage = {
       id: 7, type, sender_id: 200, sender_email: "sender@example.com",
       sender_full_name: "Sender", content: "/status", timestamp: 1_700_000_000,
-      ...(type === "stream" ? { stream_id: 42, subject: topic } : {}),
+      subject,
+      ...(type === "stream" ? { stream_id: 42 } : {}),
     };
     vi.spyOn(ZulipClient.prototype, "getOwnUser").mockResolvedValue({
       user_id: 100, email: account.email, full_name: "Bot",
@@ -67,9 +68,11 @@ describe("gateway channel turn dispatch", () => {
       expect(turn.ctxPayload).toMatchObject({
         Body: "/status", BodyForAgent: "/status", SessionKey: sessionKey,
         SenderId: "sender@example.com", CommandAuthorized: true, MessageSid: "7",
-        To: type === "stream" ? "42" : "200",
+        To: type === "stream" ? "stream:42" : "user:200",
+        OriginatingTo: type === "stream" ? "stream:42" : "user:200",
         ...(type === "stream" ? { MessageThreadId: topic, ThreadParentId: "42" } : {}),
       });
+      if (type === "private") expect(turn.ctxPayload.MessageThreadId).toBeUndefined();
       await turn.replyPipeline?.typing?.start();
       await turn.delivery.deliver!({ text: "reply" }, { kind: "final" });
       await turn.replyPipeline?.typing?.stop?.();

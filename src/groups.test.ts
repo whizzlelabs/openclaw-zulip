@@ -40,7 +40,7 @@ function requireMention(
 /**
  * The shape the SDK actually hands us for a Zulip stream message.
  *
- * resolveGroupSessionKey() cannot parse this plugin's bare "<stream_id>"
+ * resolveGroupSessionKey() cannot parse this plugin's "stream:<stream_id>"
  * OriginatingTo, so it falls back to ctx.From — meaning groupId arrives as the
  * *sender's email*. The stream name comes through groupChannel instead. See
  * the PR #63 review; the earlier synthetic `groupId: "42"` tests missed this.
