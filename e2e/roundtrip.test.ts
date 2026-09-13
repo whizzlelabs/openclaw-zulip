@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { loadConfig, TestZulipClient, uniqueTopic, waitForDirectReply, waitForReply, type E2EConfig, type ReactionEvent, type User } from "./zulip.js";
+import { loadConfig, TestZulipClient, uniqueTopic, waitForDirectReply, waitForReactionSequence, waitForReply, type E2EConfig, type User } from "./zulip.js";
 
 describe("deployed OpenClaw/Zulip round trip", () => {
   let config: E2EConfig;
@@ -64,19 +64,7 @@ describe("deployed OpenClaw/Zulip round trip", () => {
         ["remove", config.ackStart],
         ["add", config.ackSuccess],
       ] as const;
-      const observed: ReactionEvent[] = [];
-      let lastEventId = queue.last_event_id;
-      const deadline = Date.now() + config.timeoutMs;
-      while (Date.now() < deadline && observed.length < expected.length) {
-        const events = await client.getReactionEvents(queue.queue_id, lastEventId);
-        if (events.length) lastEventId = events.at(-1)!.id;
-        observed.push(...events.filter((event) =>
-          event.type === "reaction" && event.message_id === sentId && event.user_id === bot.user_id));
-        if (observed.length < expected.length) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-      }
-      expect(observed.map(({ op, emoji_name }) => [op, emoji_name])).toEqual(expected);
+      await waitForReactionSequence(client, queue, sentId, bot.user_id, expected, config.timeoutMs);
       const message = await client.getMessage(sentId);
       expect(message.reactions).toContainEqual(expect.objectContaining({
         user_id: bot.user_id, emoji_name: config.ackSuccess,

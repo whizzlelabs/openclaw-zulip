@@ -8,6 +8,9 @@ export interface E2EConfig {
   stream: string;
   ackStart: string;
   ackSuccess: string;
+  ackError: string;
+  failureAgentName: string;
+  failureStream: string;
   timeoutMs: number;
 }
 
@@ -42,7 +45,7 @@ export interface EventQueue {
 }
 
 export function loadConfig(): E2EConfig {
-  const required = ["E2E_ZULIP_URL", "E2E_SENDER_EMAIL", "E2E_SENDER_API_KEY", "E2E_BOT_NAME", "E2E_STREAM", "E2E_ACK_START", "E2E_ACK_SUCCESS"] as const;
+  const required = ["E2E_ZULIP_URL", "E2E_SENDER_EMAIL", "E2E_SENDER_API_KEY", "E2E_BOT_NAME", "E2E_STREAM", "E2E_ACK_START", "E2E_ACK_SUCCESS", "E2E_ACK_ERROR", "E2E_FAILURE_AGENT_NAME", "E2E_FAILURE_STREAM"] as const;
   const missing = required.filter((name) => !process.env[name]);
   if (missing.length) throw new Error(`Missing E2E configuration: ${missing.join(", ")}`);
   const timeoutMs = Number(process.env.E2E_REPLY_TIMEOUT_MS ?? "120000");
@@ -66,6 +69,9 @@ export function loadConfig(): E2EConfig {
     stream: process.env.E2E_STREAM!,
     ackStart: process.env.E2E_ACK_START!,
     ackSuccess: process.env.E2E_ACK_SUCCESS!,
+    ackError: process.env.E2E_ACK_ERROR!,
+    failureAgentName: process.env.E2E_FAILURE_AGENT_NAME!,
+    failureStream: process.env.E2E_FAILURE_STREAM!,
     timeoutMs,
   };
 }
@@ -217,4 +223,30 @@ export async function waitForDirectReply(
     await new Promise((resolve) => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
   }
   throw new Error(`No direct reply from configured identity within ${timeoutMs}ms`);
+}
+
+export async function waitForReactionSequence(
+  client: TestZulipClient,
+  queue: EventQueue,
+  messageId: number,
+  agentId: number,
+  expected: readonly (readonly ["add" | "remove", string])[],
+  timeoutMs: number,
+): Promise<void> {
+  const observed: ReactionEvent[] = [];
+  let lastEventId = queue.last_event_id;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && observed.length < expected.length) {
+    const events = await client.getReactionEvents(queue.queue_id, lastEventId);
+    if (events.length) lastEventId = events.at(-1)!.id;
+    observed.push(...events.filter((event) =>
+      event.type === "reaction" && event.message_id === messageId && event.user_id === agentId));
+    if (observed.length < expected.length) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  const actual = observed.map(({ op, emoji_name }) => [op, emoji_name]);
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`Expected reaction sequence ${JSON.stringify(expected)}, observed ${JSON.stringify(actual)}`);
+  }
 }
