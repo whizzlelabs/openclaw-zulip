@@ -22,10 +22,24 @@ import {
 } from "./stream-registry.js";
 
 const CHANNEL_ID = "zulip";
+type GatewayLog = NonNullable<ChannelGatewayContext<ZulipResolvedAccount>["log"]>;
+
+function withAccountPrefix(log: GatewayLog | undefined, accountId: string): GatewayLog | undefined {
+  if (!log) return undefined;
+  const prefix = `[${accountId}] `;
+  const debug = log.debug;
+  return {
+    info: (message) => log.info(`${prefix}${message}`),
+    warn: (message) => log.warn(`${prefix}${message}`),
+    error: (message) => log.error(`${prefix}${message}`),
+    debug: debug ? (message) => debug(`${prefix}${message}`) : undefined,
+  };
+}
 
 export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount>["gateway"]> = {
   async startAccount(ctx) {
-    const { account, abortSignal, log } = ctx;
+    const { account, abortSignal } = ctx;
+    const log = withAccountPrefix(ctx.log, account.accountId);
     const runtime = getZulipRuntime();
 
     const client = new ZulipClient({
@@ -132,15 +146,15 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
         if (decision.action === "drop") {
           // Own-message echoes are the common case and would drown the log.
           if (decision.reason !== "self") {
-            log?.info(`[${account.accountId}] Dropping message ${msg.id}: ${decision.detail}`);
+            log?.info(`Dropping message ${msg.id}: ${decision.detail}`);
           }
           continue;
         }
 
         try {
-          await handleInboundMessage(ctx, client, msg, runtime);
+          await handleInboundMessage(ctx, client, msg, runtime, log);
         } catch (err) {
-          log?.error(`[${account.accountId}] Error handling message ${msg.id}: ${err}`);
+          log?.error(`Error handling message ${msg.id}: ${err}`);
         }
       }
     }
@@ -167,7 +181,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
   },
 
   async stopAccount(ctx) {
-    ctx.log?.info(`Stopping account ${ctx.account.accountId}`);
+    withAccountPrefix(ctx.log, ctx.account.accountId)?.info("Stopping account");
     // The abort signal in startAccount will break the poll loop
   },
 };
@@ -203,8 +217,9 @@ async function handleInboundMessage(
   client: ZulipClient,
   msg: ZulipMessage,
   runtime: ReturnType<typeof getZulipRuntime>,
+  log: GatewayLog | undefined,
 ): Promise<void> {
-  const { cfg, account, log } = ctx;
+  const { cfg, account } = ctx;
 
   const isGroup = msg.type === "stream";
   const streamId = msg.stream_id;

@@ -13,6 +13,42 @@ afterEach(() => {
 });
 
 describe("gateway channel turn dispatch", () => {
+  it("prefixes account-scoped ingress and lifecycle logs", async () => {
+    const abort = new AbortController();
+    const account: ZulipResolvedAccount = {
+      accountId: "default", mode: "bot", serverUrl: "https://zulip.example.com",
+      email: "bot@example.com", apiKey: "test-key", enabled: true, configured: true,
+      dmPolicy: "pairing", allowFrom: [], replyToMode: "all",
+      streams: { blocked: { enabled: false } },
+    };
+    const message: ZulipMessage = {
+      id: 7, type: "stream", stream_id: 42, display_recipient: "blocked",
+      sender_id: 200, sender_email: "sender@example.com", sender_full_name: "Sender",
+      content: "hello", subject: "topic", timestamp: 1_700_000_000,
+    };
+    vi.spyOn(ZulipClient.prototype, "getOwnUser").mockResolvedValue({
+      user_id: 100, email: account.email, full_name: "Bot",
+    });
+    vi.spyOn(ZulipClient.prototype, "getStreams").mockResolvedValue([]);
+    vi.spyOn(ZulipClient.prototype, "registerEventQueue").mockResolvedValue({ queue_id: "queue", last_event_id: -1 });
+    vi.spyOn(ZulipClient.prototype, "getEvents")
+      .mockResolvedValueOnce([{ id: 1, type: "message", message }])
+      .mockImplementation(async () => { abort.abort(); return []; });
+    vi.spyOn(ZulipClient.prototype, "deleteEventQueue").mockResolvedValue(undefined);
+    setZulipRuntime({ channel: {} } as unknown as PluginRuntime);
+    const info = vi.fn();
+    const ctx = {
+      accountId: "default", account, cfg: {}, abortSignal: abort.signal,
+      setStatus: vi.fn(), getStatus: vi.fn(), runtime: { log: vi.fn(), error: vi.fn() },
+      log: { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    } as unknown as ChannelGatewayContext<ZulipResolvedAccount>;
+
+    await zulipGatewayAdapter.startAccount!(ctx);
+
+    expect(info).toHaveBeenCalledWith(expect.stringContaining("[default] Dropping message 7:"));
+    expect(info.mock.calls.every(([line]) => String(line).startsWith("[default] "))).toBe(true);
+  });
+
   it("fails startup before network access when the plugin runtime is missing", async () => {
     clearZulipRuntime();
     const getOwnUser = vi.spyOn(ZulipClient.prototype, "getOwnUser");
