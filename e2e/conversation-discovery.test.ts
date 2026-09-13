@@ -27,14 +27,22 @@ interface ConversationSendResult {
 }
 
 async function gatewayCall<T>(method: string, params: Record<string, unknown>): Promise<T> {
+  // The OpenClaw CLI suppresses normal Gateway output in its own Vitest mode.
+  // This child is an external test client, not part of Vitest's runtime.
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key === "VITEST" || key.startsWith("VITEST_") || key.startsWith("OPENCLAW_VITEST_")) delete env[key];
+  }
+  if (env.NODE_ENV === "test") delete env.NODE_ENV;
   let stdout: string;
   try {
     ({ stdout } = await execFileAsync("openclaw", [
       "gateway", "call", method, "--params", JSON.stringify(params), "--json", "--timeout", "15000",
-    ], { timeout: 20_000, maxBuffer: 1_048_576 }));
+    ], { env, timeout: 20_000, maxBuffer: 1_048_576 }));
   } catch {
     throw new Error(`OpenClaw gateway call ${method} failed`);
   }
+  if (!stdout.trim()) throw new Error(`OpenClaw gateway call ${method} returned no JSON`);
   const result: unknown = JSON.parse(stdout);
   return result as T;
 }
