@@ -311,10 +311,11 @@ async function handleInboundMessage(
     }
   }
 
-  let dispatchOk = true;
+  let replyDelivered = false;
+  let deliveryFailed = false;
 
   // Core owns session recording and the reply/typing lifecycle for this route.
-  await channelRuntime.inbound.dispatch({
+  const dispatchTurn = () => channelRuntime.inbound.dispatch({
     cfg,
     channel: CHANNEL_ID,
     accountId: account.accountId,
@@ -368,31 +369,43 @@ async function handleInboundMessage(
         } else {
           await client.sendMessage({ type: "direct", to: [msg.sender_id], content: text });
         }
+        replyDelivered = true;
       },
       onError: (err) => {
-        dispatchOk = false;
+        deliveryFailed = true;
         log?.error(`Dispatch error: ${err}`);
       },
     },
     record: { onRecordError: (err) => log?.error(`Session record error: ${err}`) },
   });
 
-  // ----- Finalize ack reactions -----
-  if (ackCfg.enabled) {
-    if (ackStartApplied && ackCfg.onStart) {
-      try {
-        await client.removeReaction(msg.id, ackCfg.onStart);
-      } catch (err) {
-        log?.debug?.(`Ack reaction removal failed: ${err}`);
+  let dispatchFailed = false;
+  try {
+    await dispatchTurn();
+  } catch (err) {
+    dispatchFailed = true;
+    throw err;
+  } finally {
+    // A completed turn can intentionally have no reply; only delivery proves
+    // success. Always clear working state, including when dispatch throws.
+    if (ackCfg.enabled) {
+      if (ackStartApplied && ackCfg.onStart) {
+        try {
+          await client.removeReaction(msg.id, ackCfg.onStart);
+        } catch (err) {
+          log?.debug?.(`Ack reaction removal failed: ${err}`);
+        }
       }
-    }
 
-    const terminalEmoji = dispatchOk ? ackCfg.onSuccess : ackCfg.onError;
-    if (terminalEmoji) {
-      try {
-        await client.addReaction(msg.id, terminalEmoji);
-      } catch (err) {
-        log?.debug?.(`Ack terminal reaction failed: ${err}`);
+      const terminalEmoji = dispatchFailed || deliveryFailed
+        ? ackCfg.onError
+        : replyDelivered ? ackCfg.onSuccess : undefined;
+      if (terminalEmoji) {
+        try {
+          await client.addReaction(msg.id, terminalEmoji);
+        } catch (err) {
+          log?.debug?.(`Ack terminal reaction failed: ${err}`);
+        }
       }
     }
   }

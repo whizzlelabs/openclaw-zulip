@@ -45,6 +45,13 @@ channels:
       private-ops:
         enabled: false         # ignore inbound messages entirely
 
+    # Optional: working-state reactions for accepted messages
+    reactions:
+      enabled: true
+      onStart: eyes
+      onSuccess: check
+      onError: cross_mark
+
     # Optional: multi-account setup
     accounts:
       work-bot:
@@ -88,6 +95,15 @@ command authorization still uses `allowFrom`.
 Numeric Zulip user IDs are the most reliable allowlist entries. Email matching ignores case, but
 Zulip may report a placeholder API email when the sender's real address is hidden, and addresses
 can change. See [Zulip's user API documentation](https://zulip.com/api/get-user-by-email).
+
+### Working-state reactions
+
+Reactions are off unless configured. Set `reactions` on the `channels.zulip` section to apply the
+same behavior to every account. `onStart` is added when an accepted message starts processing and
+removed when dispatch settles. `onSuccess` is added only after a reply is delivered; a turn that
+ends without a reply gets no terminal reaction. `onError` is added if dispatch or delivery fails.
+Messages dropped at ingress, such as own-message echoes or disabled streams, get no reaction.
+Set `enabled: false` to disable a configured reaction block.
 
 ### Per-stream config
 
