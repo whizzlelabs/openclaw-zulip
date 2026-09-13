@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "tsc --project e2e/tsconfig.json && vitest run --config vitest.e2e.config.ts",
     "lint": "eslint src/",
     "prepublishOnly": "npm run clean && npm run build && npm test",
     "prepare": "husky"
