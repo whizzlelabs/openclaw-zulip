@@ -52,6 +52,62 @@ describe("resolveZulipAccount", () => {
     expect(account.dmPolicy).toBe("pairing");
   });
 
+  it("resolves nested DM policy and allowlist", () => {
+    const account = resolveZulipAccount(makeConfig({
+      dm: { policy: "allowlist", allowFrom: [200] },
+    }));
+    expect(account.dmPolicy).toBe("allowlist");
+    expect(account.allowFrom).toEqual([200]);
+  });
+
+  it("prefers flat DM fields within the same account", () => {
+    const account = resolveZulipAccount(makeConfig({
+      dmPolicy: "open",
+      allowFrom: [201],
+      dm: { policy: "allowlist", allowFrom: [200] },
+    }));
+    expect(account.dmPolicy).toBe("open");
+    expect(account.allowFrom).toEqual([201]);
+  });
+
+  it("prefers a named account's nested DM fields over root flat defaults", () => {
+    const cfg = {
+      channels: { zulip: {
+        dmPolicy: "open",
+        allowFrom: [201],
+        accounts: { work: { dm: { policy: "allowlist", allowFrom: [200] } } },
+      } },
+    } as CoreConfig;
+    const account = resolveZulipAccount(cfg, "work");
+    expect(account.dmPolicy).toBe("allowlist");
+    expect(account.allowFrom).toEqual([200]);
+  });
+
+  it("inherits root nested DM fields when the account does not override them", () => {
+    const cfg = {
+      channels: { zulip: {
+        dm: { policy: "allowlist", allowFrom: [200] },
+        accounts: { work: { mode: "user" } },
+      } },
+    } as CoreConfig;
+    const account = resolveZulipAccount(cfg, "work");
+    expect(account.dmPolicy).toBe("allowlist");
+    expect(account.allowFrom).toEqual([200]);
+  });
+
+  it("resolves group sender allowlists per account without a DM fallback", () => {
+    const cfg = {
+      channels: { zulip: {
+        allowFrom: [201],
+        groupAllowFrom: [200],
+        accounts: { work: { groupAllowFrom: [300] }, other: {} },
+      } },
+    } as CoreConfig;
+    expect(resolveZulipAccount(cfg, "work").groupAllowFrom).toEqual([300]);
+    expect(resolveZulipAccount(cfg, "other").groupAllowFrom).toEqual([200]);
+    expect(resolveZulipAccount(makeConfig({ allowFrom: [201] })).groupAllowFrom).toEqual([]);
+  });
+
   it("defaults mode to bot", () => {
     const account = resolveZulipAccount(makeConfig());
     expect(account.mode).toBe("bot");

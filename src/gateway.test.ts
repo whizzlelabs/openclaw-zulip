@@ -20,7 +20,7 @@ describe("gateway channel turn dispatch", () => {
     const account: ZulipResolvedAccount = {
       accountId: "default", mode: "bot", serverUrl: "https://zulip.example.com",
       email: "bot@example.com", apiKey: "test-key", enabled: true, configured: true,
-      dmPolicy: "allowlist", allowFrom: [200], replyToMode: "all", streams: {},
+      dmPolicy: "allowlist", allowFrom: [200], groupAllowFrom: [], replyToMode: "all", streams: {},
     };
     const ctx = {
       accountId: "default", account, cfg: {}, abortSignal: abort.signal,
@@ -43,7 +43,7 @@ describe("gateway channel turn dispatch", () => {
     const account: ZulipResolvedAccount = {
       accountId: "default", mode: "bot", serverUrl: "https://zulip.example.com",
       email: "bot@example.com", apiKey: "test-key", enabled: true, configured: true,
-      dmPolicy: "allowlist", allowFrom: [200], replyToMode: "all", streams: {},
+      dmPolicy: "allowlist", allowFrom: [200], groupAllowFrom: [], replyToMode: "all", streams: {},
     };
     const message: ZulipMessage = {
       id: 7, type, sender_id: 200, sender_email: "sender@example.com",

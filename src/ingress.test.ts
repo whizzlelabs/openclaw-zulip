@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { resolveIngressDecision, resolveStreamName, resolveZulipCommandAuthorization } from "./ingress.js";
-import type { ZulipResolvedAccount, ZulipStreamConfig } from "./types.js";
+import { resolveZulipAccount } from "./config.js";
+import { zulipConfigSchema } from "./config-schema.js";
+import type { CoreConfig, ZulipResolvedAccount, ZulipStreamConfig } from "./types.js";
 import type { ZulipMessage } from "./zulip-client.js";
 
 const SELF_ID = 100;
@@ -18,6 +20,7 @@ function makeAccount(
     configured: true,
     dmPolicy: "pairing",
     allowFrom: [],
+    groupAllowFrom: [],
     replyToMode: "all",
     streams: {},
     ...overrides,
@@ -148,6 +151,48 @@ describe("resolveIngressDecision — stream gating", () => {
     const account = withStream("Claudestial Planetarium", { enabled: false });
     expect(decide(account, dmMessage()).action).toBe("process");
   });
+});
+
+describe("resolveIngressDecision — group sender allowlist", () => {
+  it("drops an unlisted stream sender before dispatch", () => {
+    const account = makeAccount({ groupAllowFrom: ["other@example.com"] });
+    expect(decide(account, streamMessage())).toMatchObject({
+      action: "drop",
+      reason: "group-not-allowed",
+    });
+  });
+
+  it.each([
+    ["email", ["someone@example.com"]],
+    ["numeric user id", [200]],
+    ["wildcard", ["*"]],
+  ] as const)("allows a stream sender listed by %s", (_label, entries) => {
+    expect(decide(makeAccount({ groupAllowFrom: [...entries] }), streamMessage()).action).toBe("process");
+  });
+
+  it("leaves streams open when the list is empty", () => {
+    expect(decide(makeAccount({ groupAllowFrom: [] }), streamMessage()).action).toBe("process");
+  });
+
+  it("does not apply the group sender allowlist to DMs", () => {
+    const account = makeAccount({ groupAllowFrom: ["other@example.com"] });
+    expect(decide(account, dmMessage()).action).toBe("process");
+  });
+});
+
+it("enforces both sender lists from validated account config", () => {
+  const parsed = zulipConfigSchema.runtime.safeParse({
+    accounts: { work: {
+      dm: { policy: "allowlist", allowFrom: [201] },
+      groupAllowFrom: [201],
+    } },
+  });
+  expect(parsed.success).toBe(true);
+  if (!parsed.success) return;
+  const cfg = { channels: { zulip: parsed.data } } as CoreConfig;
+  const account = resolveZulipAccount(cfg, "work");
+  expect(decide(account, dmMessage())).toMatchObject({ reason: "dm-not-allowed" });
+  expect(decide(account, streamMessage())).toMatchObject({ reason: "group-not-allowed" });
 });
 
 describe("resolveIngressDecision — self filtering", () => {

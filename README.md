@@ -73,13 +73,16 @@ channels:
 | `streams` | No | Per-stream config overrides — see [Per-stream config](#per-stream-config) |
 | `dmPolicy` | No | DM handling policy — `pairing` (default), `allowlist`, `open`, `disabled` |
 | `allowFrom` | No | Allowed sender user IDs or emails (used by `dmPolicy: allowlist`) |
+| `groupAllowFrom` | No | If nonempty, only listed sender user IDs or emails are processed in streams; `*` allows all |
 | `replyToMode` | No | Reply targeting — `all` (default), `first`, `off` |
 | `accounts` | No | Named sub-accounts, each taking the fields above |
 | `defaultAccount` | No | Which named account to use when none is specified |
 
-Use the flat `dmPolicy` / `allowFrom` fields shown above. A nested `dm` block (`dm.policy`,
-`dm.allowFrom`) is accepted by config validation for parity with other OpenClaw channels, but this
-plugin does not read it — values set there have no effect. See issue #44.
+The equivalent nested `dm.policy` and `dm.allowFrom` fields also work. When both forms are set
+at the same account level, the flat field wins; an account's settings override root defaults.
+`groupAllowFrom` controls stream-message admission independently of DM `allowFrom`. An omitted or
+empty `groupAllowFrom` leaves stream senders unrestricted. Stream command authorization still uses
+`allowFrom`.
 
 ### Per-stream config
 
