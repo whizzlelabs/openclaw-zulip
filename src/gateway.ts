@@ -237,7 +237,7 @@ async function handleInboundMessage(
     chatType = "direct";
   }
 
-  // NOTE: self-filtering, disabled streams and the DM allowlist are all
+  // NOTE: self-filtering, disabled streams and sender allowlists are all
   // decided in ingress.ts before this function is reached. Do not add drop
   // conditions here — a message that arrives has already been accepted.
 

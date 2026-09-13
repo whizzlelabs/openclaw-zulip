@@ -18,7 +18,7 @@ describe("gateway channel turn dispatch", () => {
     const account: ZulipResolvedAccount = {
       accountId: "default", mode: "bot", serverUrl: "https://zulip.example.com",
       email: "bot@example.com", apiKey: "test-key", enabled: true, configured: true,
-      dmPolicy: "pairing", allowFrom: [], replyToMode: "all",
+      dmPolicy: "pairing", allowFrom: [], groupAllowFrom: [], replyToMode: "all",
       streams: { blocked: { enabled: false } },
     };
     const message: ZulipMessage = {
