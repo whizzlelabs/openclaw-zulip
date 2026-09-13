@@ -15,6 +15,12 @@ export type ZulipStreamConfig = {
   enabled?: boolean;
 };
 
+export type ZulipDmConfig = {
+  enabled?: boolean;
+  policy?: DmPolicy;
+  allowFrom?: Array<string | number>;
+};
+
 // ---------------------------------------------------------------------------
 // Raw account config (as written in the config file)
 // ---------------------------------------------------------------------------
@@ -28,6 +34,8 @@ export type ZulipAccountConfig = {
   apiKey?: string;
   dmPolicy?: DmPolicy;
   allowFrom?: Array<string | number>;
+  dm?: ZulipDmConfig;
+  groupAllowFrom?: Array<string | number>;
   replyToMode?: string;
   streams?: Record<string, ZulipStreamConfig>;
 };
@@ -68,6 +76,7 @@ export type ZulipResolvedAccount = {
   configured: boolean;
   dmPolicy: DmPolicy;
   allowFrom: Array<string | number>;
+  groupAllowFrom: Array<string | number>;
   replyToMode: string;
   streams: Record<string, ZulipStreamConfig>;
 };

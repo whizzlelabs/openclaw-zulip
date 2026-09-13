@@ -8,6 +8,7 @@ import {
   listCombinedAccountIds,
   DEFAULT_ACCOUNT_ID,
   normalizeAccountId,
+  resolveAccountEntry,
   resolveMergedAccountConfig,
 } from "openclaw/plugin-sdk/account-resolution";
 import type { ZulipResolvedAccount, ZulipAccountConfig, CoreConfig } from "./types.js";
@@ -61,11 +62,13 @@ export function resolveZulipAccount(
     accounts: section?.accounts as Record<string, Partial<ZulipAccountConfig>> | undefined,
     accountId: id,
     omitKeys: ["accounts", "defaultAccount"],
+    inheritEmptyKeys: { groupAllowFrom: "array" },
   });
 
   const serverUrl = (merged.serverUrl ?? "").trim();
   const email = (merged.email ?? "").trim();
   const apiKey = (merged.apiKey ?? "").trim();
+  const accountConfig = resolveAccountEntry(section?.accounts, id);
 
   return {
     accountId: id,
@@ -75,8 +78,11 @@ export function resolveZulipAccount(
     apiKey,
     enabled: merged.enabled !== false,
     configured: !!(serverUrl && email && apiKey),
-    dmPolicy: merged.dmPolicy ?? "pairing",
-    allowFrom: merged.allowFrom ?? [],
+    dmPolicy: accountConfig?.dmPolicy ?? accountConfig?.dm?.policy
+      ?? section?.dmPolicy ?? section?.dm?.policy ?? "pairing",
+    allowFrom: accountConfig?.allowFrom ?? accountConfig?.dm?.allowFrom
+      ?? section?.allowFrom ?? section?.dm?.allowFrom ?? [],
+    groupAllowFrom: merged.groupAllowFrom ?? [],
     replyToMode: merged.replyToMode ?? "all",
     streams: merged.streams ?? {},
   };

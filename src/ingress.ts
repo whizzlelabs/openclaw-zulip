@@ -13,7 +13,7 @@ import { resolveStreamConfig } from "./stream-registry.js";
 // and the policy is testable without a client or a live server.
 // ---------------------------------------------------------------------------
 
-export type IngressDropReason = "self" | "stream-disabled" | "dm-not-allowed";
+export type IngressDropReason = "self" | "stream-disabled" | "group-not-allowed" | "dm-not-allowed";
 
 export type IngressDecision =
   | { action: "process" }
@@ -66,6 +66,14 @@ export function resolveIngressDecision(input: IngressInput): IngressDecision {
       };
     }
 
+    if (account.groupAllowFrom.length > 0 && !senderMatchesAllowFrom(message, account.groupAllowFrom)) {
+      return {
+        action: "drop",
+        reason: "group-not-allowed",
+        detail: `Stream message from ${message.sender_email} (id=${message.sender_id}); groupAllowFrom`,
+      };
+    }
+
     return { action: "process" };
   }
 
@@ -76,12 +84,7 @@ export function resolveIngressDecision(input: IngressInput): IngressDecision {
   // their existing soft behavior (the agent runs and decides via
   // CommandAuthorized).
   if (account.dmPolicy === "allowlist") {
-    const allowFrom = account.allowFrom.map(String);
-    const allowed =
-      allowFrom.includes(message.sender_email) ||
-      allowFrom.includes(String(message.sender_id)) ||
-      allowFrom.includes("*");
-    if (!allowed) {
+    if (!senderMatchesAllowFrom(message, account.allowFrom)) {
       return {
         action: "drop",
         reason: "dm-not-allowed",
@@ -91,6 +94,15 @@ export function resolveIngressDecision(input: IngressInput): IngressDecision {
   }
 
   return { action: "process" };
+}
+
+function senderMatchesAllowFrom(message: ZulipMessage, entries: Array<string | number>): boolean {
+  const senderId = String(message.sender_id);
+  const senderEmail = message.sender_email.toLowerCase();
+  return entries.some((entry) => {
+    const value = String(entry);
+    return value === "*" || value === senderId || value.toLowerCase() === senderEmail;
+  });
 }
 
 /** Command authorization is separate from the plugin's existing message admission policy. */

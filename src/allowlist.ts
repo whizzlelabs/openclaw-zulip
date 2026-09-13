@@ -5,7 +5,8 @@ import { resolveZulipAccount } from "./config.js";
 const SECTION_KEY = "zulip";
 
 // ---------------------------------------------------------------------------
-// Allowlist adapter — DM allow-from management
+// Allowlist adapter — DM allow-from management. The group list is reported to
+// the SDK but edited through account config, not this DM-only adapter.
 // ---------------------------------------------------------------------------
 
 export const zulipAllowlistAdapter: NonNullable<ChannelPlugin["allowlist"]> = {
@@ -15,17 +16,18 @@ export const zulipAllowlistAdapter: NonNullable<ChannelPlugin["allowlist"]> = {
     const id = accountId ?? "default";
     const path = `channels.${SECTION_KEY}.accounts.${id}.allowFrom`;
 
-    // Read current allowFrom
-    const section = (cfg as CoreConfig).channels?.zulip;
-    const accountCfg = section?.accounts?.[id];
-    const current: Array<string | number> = accountCfg?.allowFrom ?? section?.allowFrom ?? [];
+    // Read the effective allowlist, including the nested DM form, before
+    // writing the edited result to the canonical flat account field.
+    const current = resolveZulipAccount(cfg as CoreConfig, id).allowFrom;
 
     let next: Array<string | number>;
     if (action === "add") {
-      if (current.includes(entry)) return { kind: "ok", changed: false, pathLabel: path, writeTarget: { kind: "global" } };
+      if (current.some((value) => String(value) === entry)) {
+        return { kind: "ok", changed: false, pathLabel: path, writeTarget: { kind: "global" } };
+      }
       next = [...current, entry];
     } else {
-      next = current.filter((e) => e !== entry);
+      next = current.filter((value) => String(value) !== entry);
       if (next.length === current.length) return { kind: "ok", changed: false, pathLabel: path, writeTarget: { kind: "global" } };
     }
 
@@ -43,6 +45,7 @@ export const zulipAllowlistAdapter: NonNullable<ChannelPlugin["allowlist"]> = {
     const account = resolveZulipAccount(cfg as CoreConfig, accountId);
     return {
       dmAllowFrom: account.allowFrom,
+      groupAllowFrom: account.groupAllowFrom,
       dmPolicy: account.dmPolicy,
     };
   },

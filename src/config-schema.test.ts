@@ -57,14 +57,22 @@ describe("zulipConfigSchema", () => {
     expect(zulipConfigSchema.runtime.safeParse({ dmPolicy: "nonsense" }).success).toBe(false);
   });
 
-  // Validation-only: the adapters never read `dm`, so this pins that the shape
-  // is accepted, NOT that setting it has any effect. See issue #44.
-  it("accepts the nested dm form without erroring (inert — not read by adapters)", () => {
+  it("preserves the nested DM form used by account resolution", () => {
     const parsed = parseSection({
       dm: { policy: "allowlist", allowFrom: ["someone@example.com"] },
     });
 
     expect(parsed.dm).toEqual({ policy: "allowlist", allowFrom: ["someone@example.com"] });
+  });
+
+  it("preserves groupAllowFrom on root and named accounts", () => {
+    const parsed = parseSection({
+      groupAllowFrom: [200],
+      accounts: { work: { groupAllowFrom: ["someone@example.com"] } },
+    });
+    expect(parsed.groupAllowFrom).toEqual([200]);
+    const accounts = parsed.accounts as Record<string, Section>;
+    expect(accounts.work.groupAllowFrom).toEqual(["someone@example.com"]);
   });
 
   it("accepts every replyToMode value threading.ts honours", () => {
@@ -134,12 +142,13 @@ describe("zulipConfigSchema", () => {
     expect(accounts.bot.dmPolicy).toBe("allowlist");
   });
 
-  it("exposes dmPolicy and allowFrom in the generated JSON Schema", () => {
+  it("exposes sender allowlists and DM policy in the generated JSON Schema", () => {
     const properties = (zulipConfigSchema.schema as { properties?: Record<string, unknown> })
       .properties;
 
     expect(properties).toBeDefined();
     expect(properties).toHaveProperty("dmPolicy");
     expect(properties).toHaveProperty("allowFrom");
+    expect(properties).toHaveProperty("groupAllowFrom");
   });
 });
