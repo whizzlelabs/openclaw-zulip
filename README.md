@@ -132,6 +132,8 @@ and an exact `conversationRef`. Use that reference with `conversations_send` or
 `conversations_turn` to address a discovered DM or topic without choosing an account or formatting
 a raw target. To explore existing topics, first find the stream ID, then query `<stream_id>/` or
 `<stream_id>/<topic_search>`; for example, `42/` lists accessible, named topics in stream 42.
+Numeric topic selectors use stream IDs only. For a stream whose name contains `/`, an exact
+name query finds the stream; use its numeric ID when exploring topics to avoid ambiguity.
 A stream-only reference has no topic and cannot be used to send a stream message.
 
 For a new topic, use the shared `message` tool when the agent's tool policy allows it. Set its

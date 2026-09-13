@@ -58,17 +58,31 @@ export const zulipDirectoryAdapter: NonNullable<ChannelPlugin["directory"]> = {
     if (slashIdx !== -1 && query) {
       const streamQuery = query.slice(0, slashIdx).trim().replace(/^#/, "");
       const topicQuery = query.slice(slashIdx + 1).toLowerCase();
-      const stream = streams.find((s) =>
-        String(s.stream_id) === streamQuery || s.name.toLowerCase() === streamQuery.toLowerCase()
-      );
-      if (!stream) return [];
-      const topics = await client.getStreamTopics(stream.stream_id);
-      const filtered = topics.filter((topic) => topic.name && topic.name.toLowerCase().includes(topicQuery));
-      return (limit && limit > 0 ? filtered.slice(0, limit) : filtered).map((topic) => ({
-        kind: "group" as const,
-        id: `${stream.stream_id}/${topic.name}`,
-        name: `${stream.name}/${topic.name}`,
-      }));
+      const numericSelector = /^\d+$/.test(streamQuery);
+      if (!numericSelector) {
+        // Zulip stream names may contain "/". An exact full-name match takes
+        // precedence; use a stream ID to disambiguate a topic query.
+        const namedStream = streams.find((s) => s.name.toLowerCase() === query.replace(/^#/, "").toLowerCase());
+        if (namedStream) return [{ kind: "group", id: String(namedStream.stream_id), name: namedStream.name }];
+      }
+      const stream = numericSelector
+        ? streams.find((s) => String(s.stream_id) === streamQuery)
+        : streams.find((s) => s.name.toLowerCase() === streamQuery.toLowerCase());
+      if (stream) {
+        const topics = await client.getStreamTopics(stream.stream_id);
+        const filtered = topics.filter((topic) => topic.name && topic.name.toLowerCase().includes(topicQuery));
+        if (numericSelector || filtered.length > 0) {
+          return (limit && limit > 0 ? filtered.slice(0, limit) : filtered).map((topic) => ({
+            kind: "group" as const,
+            id: `${stream.stream_id}/${topic.name}`,
+            name: `${stream.name}/${topic.name}`,
+          }));
+        }
+      } else if (numericSelector) {
+        return [];
+      }
+      // If no topic matches a named stream, preserve the stream-name search
+      // for partial names such as "ops/ale".
     }
     let filtered = streams;
     if (query) {
