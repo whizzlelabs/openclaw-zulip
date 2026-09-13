@@ -11,12 +11,16 @@ export interface E2EConfig {
   ackError: string;
   failureAgentName: string;
   failureStream: string;
+  agentId: string;
+  accountId: string;
+  directoryBotName: string;
   timeoutMs: number;
 }
 
 export interface User {
   user_id: number;
   full_name: string;
+  is_bot: boolean;
 }
 
 export interface Message {
@@ -24,6 +28,8 @@ export interface Message {
   sender_id: number;
   subject: string;
   content: string;
+  type: "private" | "stream";
+  display_recipient: string | Array<{ id: number }>;
   reactions?: Reaction[];
 }
 
@@ -45,7 +51,7 @@ export interface EventQueue {
 }
 
 export function loadConfig(): E2EConfig {
-  const required = ["E2E_ZULIP_URL", "E2E_SENDER_EMAIL", "E2E_SENDER_API_KEY", "E2E_BOT_NAME", "E2E_STREAM", "E2E_ACK_START", "E2E_ACK_SUCCESS", "E2E_ACK_ERROR", "E2E_FAILURE_AGENT_NAME", "E2E_FAILURE_STREAM"] as const;
+  const required = ["E2E_ZULIP_URL", "E2E_SENDER_EMAIL", "E2E_SENDER_API_KEY", "E2E_BOT_NAME", "E2E_STREAM", "E2E_ACK_START", "E2E_ACK_SUCCESS", "E2E_ACK_ERROR", "E2E_FAILURE_AGENT_NAME", "E2E_FAILURE_STREAM", "E2E_AGENT_ID", "E2E_ACCOUNT_ID", "E2E_DIRECTORY_BOT_NAME"] as const;
   const missing = required.filter((name) => !process.env[name]);
   if (missing.length) throw new Error(`Missing E2E configuration: ${missing.join(", ")}`);
   const timeoutMs = Number(process.env.E2E_REPLY_TIMEOUT_MS ?? "120000");
@@ -72,6 +78,9 @@ export function loadConfig(): E2EConfig {
     ackError: process.env.E2E_ACK_ERROR!,
     failureAgentName: process.env.E2E_FAILURE_AGENT_NAME!,
     failureStream: process.env.E2E_FAILURE_STREAM!,
+    agentId: process.env.E2E_AGENT_ID!,
+    accountId: process.env.E2E_ACCOUNT_ID!,
+    directoryBotName: process.env.E2E_DIRECTORY_BOT_NAME!,
     timeoutMs,
   };
 }
@@ -148,7 +157,7 @@ export class TestZulipClient {
   }
 
   async getMessage(messageId: number): Promise<Message> {
-    const data = await this.request<{ message: Message }>("GET", `/messages/${messageId}`);
+    const data = await this.request<{ message: Message }>("GET", `/messages/${messageId}`, { apply_markdown: "false" });
     return data.message;
   }
 
