@@ -132,7 +132,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
         if (decision.action === "drop") {
           // Own-message echoes are the common case and would drown the log.
           if (decision.reason !== "self") {
-            log?.info(`Dropping message ${msg.id}: ${decision.detail}`);
+            log?.info(`[${account.accountId}] Dropping message ${msg.id}: ${decision.detail}`);
           }
           continue;
         }
@@ -140,7 +140,7 @@ export const zulipGatewayAdapter: NonNullable<ChannelPlugin<ZulipResolvedAccount
         try {
           await handleInboundMessage(ctx, client, msg, runtime);
         } catch (err) {
-          log?.error(`Error handling message ${msg.id}: ${err}`);
+          log?.error(`[${account.accountId}] Error handling message ${msg.id}: ${err}`);
         }
       }
     }
