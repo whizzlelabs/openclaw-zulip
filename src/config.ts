@@ -62,6 +62,7 @@ export function resolveZulipAccount(
     accounts: section?.accounts as Record<string, Partial<ZulipAccountConfig>> | undefined,
     accountId: id,
     omitKeys: ["accounts", "defaultAccount"],
+    inheritEmptyKeys: { groupAllowFrom: "array" },
   });
 
   const serverUrl = (merged.serverUrl ?? "").trim();

@@ -164,6 +164,7 @@ describe("resolveIngressDecision — group sender allowlist", () => {
 
   it.each([
     ["email", ["someone@example.com"]],
+    ["mixed-case email", ["Someone@Example.com"]],
     ["numeric user id", [200]],
     ["wildcard", ["*"]],
   ] as const)("allows a stream sender listed by %s", (_label, entries) => {
@@ -174,25 +175,32 @@ describe("resolveIngressDecision — group sender allowlist", () => {
     expect(decide(makeAccount({ groupAllowFrom: [] }), streamMessage()).action).toBe("process");
   });
 
+  it("requires a user ID when Zulip hides the sender's real email", () => {
+    const message = streamMessage({ sender_email: "user200@zulip.example.com" });
+    expect(decide(makeAccount({ groupAllowFrom: ["someone@example.com"] }), message))
+      .toMatchObject({ reason: "group-not-allowed" });
+    expect(decide(makeAccount({ groupAllowFrom: [200] }), message).action).toBe("process");
+  });
+
   it("does not apply the group sender allowlist to DMs", () => {
     const account = makeAccount({ groupAllowFrom: ["other@example.com"] });
     expect(decide(account, dmMessage()).action).toBe("process");
   });
-});
 
-it("enforces both sender lists from validated account config", () => {
-  const parsed = zulipConfigSchema.runtime.safeParse({
-    accounts: { work: {
-      dm: { policy: "allowlist", allowFrom: [201] },
-      groupAllowFrom: [201],
-    } },
+  it("enforces both sender lists from validated account config", () => {
+    const parsed = zulipConfigSchema.runtime.safeParse({
+      accounts: { work: {
+        dm: { policy: "allowlist", allowFrom: [201] },
+        groupAllowFrom: [201],
+      } },
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    const cfg = { channels: { zulip: parsed.data } } as CoreConfig;
+    const account = resolveZulipAccount(cfg, "work");
+    expect(decide(account, dmMessage())).toMatchObject({ reason: "dm-not-allowed" });
+    expect(decide(account, streamMessage())).toMatchObject({ reason: "group-not-allowed" });
   });
-  expect(parsed.success).toBe(true);
-  if (!parsed.success) return;
-  const cfg = { channels: { zulip: parsed.data } } as CoreConfig;
-  const account = resolveZulipAccount(cfg, "work");
-  expect(decide(account, dmMessage())).toMatchObject({ reason: "dm-not-allowed" });
-  expect(decide(account, streamMessage())).toMatchObject({ reason: "group-not-allowed" });
 });
 
 describe("resolveIngressDecision — self filtering", () => {
@@ -231,6 +239,11 @@ describe("resolveIngressDecision — DM allowlist", () => {
 
   it("allows a sender listed by email", () => {
     const account = makeAccount({ dmPolicy: "allowlist", allowFrom: ["someone@example.com"] });
+    expect(decide(account, dmMessage()).action).toBe("process");
+  });
+
+  it("matches configured DM email addresses without case sensitivity", () => {
+    const account = makeAccount({ dmPolicy: "allowlist", allowFrom: ["Someone@Example.com"] });
     expect(decide(account, dmMessage()).action).toBe("process");
   });
 

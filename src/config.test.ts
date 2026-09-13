@@ -108,6 +108,20 @@ describe("resolveZulipAccount", () => {
     expect(resolveZulipAccount(makeConfig({ allowFrom: [201] })).groupAllowFrom).toEqual([]);
   });
 
+  it("inherits a restricted root group list through an empty account override", () => {
+    const cfg = {
+      channels: { zulip: {
+        groupAllowFrom: [200],
+        accounts: {
+          inherited: { groupAllowFrom: [] },
+          open: { groupAllowFrom: ["*"] },
+        },
+      } },
+    } as CoreConfig;
+    expect(resolveZulipAccount(cfg, "inherited").groupAllowFrom).toEqual([200]);
+    expect(resolveZulipAccount(cfg, "open").groupAllowFrom).toEqual(["*"]);
+  });
+
   it("defaults mode to bot", () => {
     const account = resolveZulipAccount(makeConfig());
     expect(account.mode).toBe("bot");

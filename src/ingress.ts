@@ -97,10 +97,12 @@ export function resolveIngressDecision(input: IngressInput): IngressDecision {
 }
 
 function senderMatchesAllowFrom(message: ZulipMessage, entries: Array<string | number>): boolean {
-  const allowFrom = entries.map(String);
-  return allowFrom.includes("*") ||
-    allowFrom.includes(message.sender_email) ||
-    allowFrom.includes(String(message.sender_id));
+  const senderId = String(message.sender_id);
+  const senderEmail = message.sender_email.toLowerCase();
+  return entries.some((entry) => {
+    const value = String(entry);
+    return value === "*" || value === senderId || value.toLowerCase() === senderEmail;
+  });
 }
 
 /** Command authorization is separate from the plugin's existing message admission policy. */

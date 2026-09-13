@@ -5,7 +5,8 @@ import { resolveZulipAccount } from "./config.js";
 const SECTION_KEY = "zulip";
 
 // ---------------------------------------------------------------------------
-// Allowlist adapter — DM allow-from management
+// Allowlist adapter — DM allow-from management. The group list is reported to
+// the SDK but edited through account config, not this DM-only adapter.
 // ---------------------------------------------------------------------------
 
 export const zulipAllowlistAdapter: NonNullable<ChannelPlugin["allowlist"]> = {
