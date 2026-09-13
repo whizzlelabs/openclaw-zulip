@@ -35,10 +35,13 @@ describe("gateway channel turn dispatch", () => {
       .mockResolvedValueOnce([{ id: 1, type: "message", message }])
       .mockImplementation(async () => { abort.abort(); return []; });
     vi.spyOn(ZulipClient.prototype, "deleteEventQueue").mockResolvedValue(undefined);
+    const addReaction = vi.spyOn(ZulipClient.prototype, "addReaction").mockResolvedValue(undefined);
     setZulipRuntime({ channel: {} } as unknown as PluginRuntime);
     const info = vi.fn();
     const ctx = {
-      accountId: "default", account, cfg: {}, abortSignal: abort.signal,
+      accountId: "default", account,
+      cfg: { channels: { zulip: { reactions: { enabled: true, onStart: "eyes" } } } },
+      abortSignal: abort.signal,
       setStatus: vi.fn(), getStatus: vi.fn(), runtime: { log: vi.fn(), error: vi.fn() },
       log: { info, warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     } as unknown as ChannelGatewayContext<ZulipResolvedAccount>;
@@ -47,6 +50,7 @@ describe("gateway channel turn dispatch", () => {
 
     expect(info).toHaveBeenCalledWith(expect.stringContaining("[default] Dropping message 7:"));
     expect(info.mock.calls.every(([line]) => String(line).startsWith("[default] "))).toBe(true);
+    expect(addReaction).not.toHaveBeenCalled();
   });
 
   it("fails startup before network access when the plugin runtime is missing", async () => {
@@ -146,5 +150,108 @@ describe("gateway channel turn dispatch", () => {
     expect(deleteQueue).toHaveBeenCalledWith("queue");
     expect(getZulipBindingStore(account.accountId).size).toBe(0);
     expect(ctx.log?.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("gateway working-state reactions", () => {
+  type Turn = Parameters<PluginRuntime["channel"]["inbound"]["dispatch"]>[0];
+
+  async function runTurn(
+    dispatchTurn: (turn: Turn) => Promise<unknown>,
+    reactions: { enabled?: boolean; onStart: string; onSuccess: string; onError: string } | null = {
+      enabled: true, onStart: "eyes", onSuccess: "check", onError: "cross_mark",
+    },
+  ) {
+    const abort = new AbortController();
+    const account: ZulipResolvedAccount = {
+      accountId: "default", mode: "bot", serverUrl: "https://zulip.example.com",
+      email: "bot@example.com", apiKey: "test-key", enabled: true, configured: true,
+      dmPolicy: "allowlist", allowFrom: [200], groupAllowFrom: [], replyToMode: "all", streams: {},
+    };
+    const message: ZulipMessage = {
+      id: 7, type: "stream", stream_id: 42, display_recipient: "sandbox",
+      sender_id: 200, sender_email: "sender@example.com", sender_full_name: "Sender",
+      content: "hello", subject: "topic", timestamp: 1_700_000_000,
+    };
+    vi.spyOn(ZulipClient.prototype, "getOwnUser").mockResolvedValue({
+      user_id: 100, email: account.email, full_name: "Bot",
+    });
+    vi.spyOn(ZulipClient.prototype, "getStreams").mockResolvedValue([]);
+    vi.spyOn(ZulipClient.prototype, "registerEventQueue").mockResolvedValue({ queue_id: "queue", last_event_id: -1 });
+    vi.spyOn(ZulipClient.prototype, "getEvents")
+      .mockResolvedValueOnce([{ id: 1, type: "message", message }])
+      .mockImplementation(async () => { abort.abort(); return []; });
+    vi.spyOn(ZulipClient.prototype, "deleteEventQueue").mockResolvedValue(undefined);
+
+    const events: string[] = [];
+    vi.spyOn(ZulipClient.prototype, "addReaction").mockImplementation(async (_id, emoji) => {
+      events.push(`add:${emoji}`);
+    });
+    vi.spyOn(ZulipClient.prototype, "removeReaction").mockImplementation(async (_id, emoji) => {
+      events.push(`remove:${emoji}`);
+    });
+    vi.spyOn(ZulipClient.prototype, "sendMessage").mockImplementation(async () => {
+      events.push("send");
+      return { id: 8 };
+    });
+    const dispatch = vi.fn(dispatchTurn);
+    setZulipRuntime({ channel: {
+      routing: { resolveAgentRoute: () => ({ agentId: "main", accountId: "default", sessionKey: "agent:main:zulip:group:42/topic" }) },
+      commands: { shouldComputeCommandAuthorized: () => true },
+      pairing: { readAllowFromStore: async () => [] },
+      inbound: { dispatch },
+    } } as unknown as PluginRuntime);
+    const error = vi.fn();
+    const ctx = {
+      accountId: "default", account,
+      cfg: { channels: { zulip: reactions ? { reactions } : {} } },
+      abortSignal: abort.signal,
+      setStatus: vi.fn(), getStatus: vi.fn(), runtime: { log: vi.fn(), error: vi.fn() },
+      log: { info: vi.fn(), warn: vi.fn(), error, debug: vi.fn() },
+    } as unknown as ChannelGatewayContext<ZulipResolvedAccount>;
+
+    await zulipGatewayAdapter.startAccount!(ctx);
+    expect(dispatch).toHaveBeenCalledOnce();
+    return { events, error };
+  }
+
+  it("removes working state and marks success after a delivered reply", async () => {
+    const { events } = await runTurn(async (turn) => {
+      await turn.delivery.deliver!({ text: "reply" }, { kind: "final" });
+      return { dispatched: true };
+    });
+
+    expect(events).toEqual(["add:eyes", "send", "remove:eyes", "add:check"]);
+  });
+
+  it("removes working state without a success reaction when no reply is delivered", async () => {
+    const { events } = await runTurn(async () => ({ dispatched: true }));
+
+    expect(events).toEqual(["add:eyes", "remove:eyes"]);
+  });
+
+  it("removes working state and marks a thrown dispatch as failed", async () => {
+    const { events, error } = await runTurn(async () => { throw new Error("dispatch failed"); });
+
+    expect(events).toEqual(["add:eyes", "remove:eyes", "add:cross_mark"]);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("Error handling message 7: Error: dispatch failed"));
+  });
+
+  it("marks a reported delivery failure as an error", async () => {
+    const { events } = await runTurn(async (turn) => {
+      turn.delivery.onError?.(new Error("send failed"), { kind: "final" });
+      return { dispatched: true };
+    });
+
+    expect(events).toEqual(["add:eyes", "remove:eyes", "add:cross_mark"]);
+  });
+
+  it("does not react when working-state signalling is not configured", async () => {
+    const { events } = await runTurn(async (turn) => {
+      await turn.delivery.deliver!({ text: "reply" }, { kind: "final" });
+      return { dispatched: true };
+    }, null);
+
+    expect(events).toEqual(["send"]);
   });
 });
