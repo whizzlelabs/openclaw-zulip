@@ -51,6 +51,16 @@ describe("ZulipClient", () => {
     expect(url).toContain("https://zulip.example.com/api/v1/messages");
   });
 
+  it("gets accessible topics with the empty topic preserved", async () => {
+    const returnedTopics = [{ name: "releases", max_id: 12 }, { name: "", max_id: 11 }];
+    const fetchSpy = mockFetch({ result: "success", topics: returnedTopics });
+    globalThis.fetch = fetchSpy;
+
+    const client = new ZulipClient(config);
+    expect(await client.getStreamTopics(42)).toEqual(returnedTopics);
+    expect(fetchSpy.mock.calls[0][0]).toContain("/api/v1/users/me/42/topics?allow_empty_topic_name=true");
+  });
+
   describe("sendMessage", () => {
     it("sends a stream message", async () => {
       const fetchSpy = mockFetch({ result: "success", id: 99 });

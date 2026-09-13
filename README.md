@@ -123,6 +123,30 @@ Numeric keys are ID selectors *only* — they are never matched against a stream
 `"42"` will not pick up a stream that happens to be named `42`. A stream whose name is entirely
 digits can therefore only be configured by its ID.
 
+## Finding and sending to destinations
+
+Agents can use `conversations_list` with `channel: "zulip"` and a display-name or visible-email
+`query` to find people (including bots) and streams. Zulip may mask a user's real email address;
+search by name if that email finds nothing. The result includes the account ID, native user or stream ID,
+and an exact `conversationRef`. Use that reference with `conversations_send` or
+`conversations_turn` to address a discovered DM or topic without choosing an account or formatting
+a raw target. To explore existing topics, first find the stream ID, then query `<stream_id>/` or
+`<stream_id>/<topic_search>`; for example, `42/` lists accessible, named topics in stream 42.
+Numeric topic selectors use stream IDs only. For a stream whose name contains `/`, an exact
+name query finds the stream; use its numeric ID when exploring topics to avoid ambiguity.
+A stream-only reference has no topic and cannot be used to send a stream message.
+
+For a new topic, use the shared `message` tool when the agent's tool policy allows it. Set its
+target to `stream:<name_or_id>/<topic>`, or use `stream:<name_or_id>` with a separate `threadId`.
+For a new DM, use `user:<email_or_id>` (or `dm:<user_id>`). Bare numeric targets are ambiguous
+between user and stream IDs. The plugin supplies these hints to agents in Zulip conversations and
+in target-resolution errors; no separate Zulip skill is required for destination syntax.
+
+In multi-account setups, use OpenClaw's agent/channel account bindings to associate each agent
+with its sending account. `defaultAccount` is a channel-wide fallback, not an agent-to-account
+mapping. The plugin receives the account chosen by OpenClaw for raw message sends; conversation
+references carry their own account identity.
+
 ## ACP topic bindings
 
 A binding ties an ACP agent session to a specific Zulip conversation, so messages arriving there

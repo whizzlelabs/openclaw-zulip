@@ -43,20 +43,23 @@ export const zulipMessagingAdapter: NonNullable<ChannelPlugin["messaging"]> = {
     const raw = (resolvedTarget?.to ?? target).replace(/^(?:dm|user|stream):/, "");
     const { streamPart, topicPart } = splitStreamTopic(raw);
     const topic = direct ? undefined : (threadId != null ? String(threadId) : topicPart);
-    const to = direct ? raw : streamPart;
+    // Keep the kind in the delivery target. Conversation discovery persists
+    // this value and later sends it through target resolution without a
+    // preferred kind; a bare numeric user/stream ID would be ambiguous there.
+    const to = direct ? `user:${raw}` : `stream:${streamPart}`;
     const chatType = direct ? "direct" : "group";
     return buildChannelOutboundSessionRoute({
       cfg, agentId, accountId, channel: "zulip", chatType,
-      peer: { kind: chatType, id: topic !== undefined ? `${to}/${topic}` : to },
-      recipientSessionExact: isNumeric(to) && (direct || topic !== undefined),
-      from: `zulip:${to}`,
+      peer: { kind: chatType, id: topic !== undefined ? `${streamPart}/${topic}` : raw },
+      recipientSessionExact: isNumeric(direct ? raw : streamPart) && (direct || topic !== undefined),
+      from: `zulip:${direct ? raw : streamPart}`,
       to,
       threadId: topic,
     });
   },
 
   targetResolver: {
-    hint: 'Use "stream:<name_or_id>/<topic>" for streams or "dm:<user_id>" / "user:<email>" for DMs.',
+    hint: 'Use "stream:<name_or_id>/<topic>" for streams or "user:<email_or_id>" for DMs. Find user and stream IDs with conversations_list(channel="zulip", query="...").',
 
     looksLikeId(raw: string) {
       if (

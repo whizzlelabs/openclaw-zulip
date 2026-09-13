@@ -82,16 +82,16 @@ describe("zulipMessagingAdapter", () => {
 
   describe("outbound session routing", () => {
     it.each([
-      ["dm:123", "123", undefined, "direct"],
-      ["user:alice@example.com", "alice@example.com", undefined, "direct"],
-      ["stream:42", "42", undefined, "group"],
-      ["stream:42/hello", "42", "hello", "group"],
-      ["stream:Jeeves:agent-output", "Jeeves", "agent-output", "group"],
-      ["stream:42/topic:with:colons", "42", "topic:with:colons", "group"],
-      ["42/path/to/topic", "42", "path/to/topic", "group"],
-    ] as const)("preserves the destination and topic for %s", async (target, to, threadId, chatType) => {
+      ["dm:123", "user:123", "123", undefined, "direct"],
+      ["user:alice@example.com", "user:alice@example.com", "alice@example.com", undefined, "direct"],
+      ["stream:42", "stream:42", "42", undefined, "group"],
+      ["stream:42/hello", "stream:42", "42/hello", "hello", "group"],
+      ["stream:Jeeves:agent-output", "stream:Jeeves", "Jeeves/agent-output", "agent-output", "group"],
+      ["stream:42/topic:with:colons", "stream:42", "42/topic:with:colons", "topic:with:colons", "group"],
+      ["42/path/to/topic", "stream:42", "42/path/to/topic", "path/to/topic", "group"],
+    ] as const)("preserves the destination and topic for %s", async (target, to, peerId, threadId, chatType) => {
       const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({ cfg: {}, agentId: "main", target });
-      expect(route).toMatchObject({ to, chatType, peer: { kind: chatType, id: threadId ? `${to}/${threadId}` : to } });
+      expect(route).toMatchObject({ to, chatType, peer: { kind: chatType, id: peerId } });
       expect(route?.threadId).toBe(threadId);
     });
 
@@ -99,11 +99,11 @@ describe("zulipMessagingAdapter", () => {
       const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
         cfg: {}, agentId: "main", target: "42/old", threadId: "new",
       });
-      expect(route).toMatchObject({ to: "42", threadId: "new", peer: { id: "42/new" } });
+      expect(route).toMatchObject({ to: "stream:42", threadId: "new", peer: { id: "42/new" } });
       const direct = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
         cfg: {}, agentId: "main", target: "user:200", resolvedTarget: { to: "user:200", kind: "user", source: "normalized" },
       });
-      expect(direct).toMatchObject({ to: "200", chatType: "direct", peer: { id: "200" } });
+      expect(direct).toMatchObject({ to: "user:200", chatType: "direct", peer: { id: "200" } });
     });
 
     it("does not claim an exact session for a topic-less stream", async () => {
@@ -140,10 +140,42 @@ describe("zulipMessagingAdapter", () => {
         resolvedTarget: { to: "stream:general/new", kind: "channel", source: "directory" },
       });
       expect(route).toMatchObject({
-        to: "general",
+        to: "stream:general",
         threadId: "new",
         peer: { kind: "group", id: "general/new" },
         recipientSessionExact: false,
+      });
+    });
+
+    it("keeps a discovered DM unambiguous through target resolution and delivery", async () => {
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", accountId: "bot", target: "10",
+        resolvedTarget: { to: "10", kind: "user", source: "directory" },
+      });
+      expect(route).toMatchObject({ to: "user:10", peer: { kind: "direct", id: "10" } });
+      const resolved = await zulipMessagingAdapter.targetResolver!.resolveTarget!({
+        cfg: {}, input: route!.to, normalized: route!.to,
+      });
+      expect(resolved).toMatchObject({ to: "user:10", kind: "user" });
+      expect(resolveOutboundTarget(resolved!.to, route!.threadId)).toEqual({ type: "direct", to: [10] });
+    });
+
+    it("keeps a discovered topic unambiguous through target resolution and delivery", async () => {
+      const { buildClient } = await import("./outbound.js");
+      vi.mocked(buildClient).mockReturnValue({
+        getStreamById: async () => ({ stream_id: 42, name: "general" }),
+      } as ReturnType<typeof buildClient>);
+      const route = await zulipMessagingAdapter.resolveOutboundSessionRoute!({
+        cfg: {}, agentId: "main", accountId: "bot", target: "42/releases",
+        resolvedTarget: { to: "42/releases", kind: "group", source: "directory" },
+      });
+      expect(route).toMatchObject({ to: "stream:42", threadId: "releases", peer: { id: "42/releases" } });
+      const resolved = await zulipMessagingAdapter.targetResolver!.resolveTarget!({
+        cfg: {}, accountId: "bot", input: route!.to, normalized: route!.to,
+      });
+      expect(resolved).toMatchObject({ to: "stream:general", kind: "channel" });
+      expect(resolveOutboundTarget(resolved!.to, route!.threadId)).toEqual({
+        type: "stream", to: "general", topic: "releases",
       });
     });
   });
