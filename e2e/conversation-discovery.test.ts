@@ -12,6 +12,7 @@ interface Conversation {
   accountId: string;
   kind: string;
   target: string;
+  label?: string;
   threadId?: string;
 }
 
@@ -90,14 +91,16 @@ describe("deployed OpenClaw conversation discovery and send", () => {
   it("finds a bot user by name", async () => {
     const directoryBot = await client.findUser(config.directoryBotName);
     expect(directoryBot.is_bot).toBe(true);
-    const conversations = await listConversations(config, config.directoryBotName);
-    requireConversation(conversations, (entry) =>
-      entry.accountId === config.accountId && entry.kind === "direct" &&
-      entry.target === `user:${directoryBot.user_id}`);
+    for (const query of [config.directoryBotName, directoryBot.email]) {
+      const conversations = await listConversations(config, query);
+      requireConversation(conversations, (entry) =>
+        entry.accountId === config.accountId && entry.kind === "direct" &&
+        entry.target === `user:${directoryBot.user_id}`);
+    }
   });
 
   it("sends to a discovered DM through the gateway", async () => {
-    const conversation = requireConversation(await listConversations(config, config.email), (entry) =>
+    const conversation = requireConversation(await listConversations(config, sender.full_name), (entry) =>
       entry.accountId === config.accountId && entry.kind === "direct" &&
       entry.target === `user:${sender.user_id}`);
     const marker = uniqueTopic("conversation-dm");
@@ -114,7 +117,7 @@ describe("deployed OpenClaw conversation discovery and send", () => {
     await client.sendStreamMessage(config.stream, topic, "E2E topic discovery fixture; no response needed.");
     const stream = requireConversation(await listConversations(config, config.stream), (entry) =>
       entry.accountId === config.accountId && entry.kind === "group" &&
-      /^stream:\d+$/.test(entry.target) && !entry.threadId);
+      entry.label === config.stream && /^stream:\d+$/.test(entry.target) && !entry.threadId);
     const streamId = stream.target.slice("stream:".length);
     const conversation = requireConversation(await listConversations(config, `${streamId}/${topic}`), (entry) =>
       entry.accountId === config.accountId && entry.kind === "group" &&

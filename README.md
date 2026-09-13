@@ -125,8 +125,9 @@ digits can therefore only be configured by its ID.
 
 ## Finding and sending to destinations
 
-Agents can use `conversations_list` with `channel: "zulip"` and a name or email `query` to find
-people (including bots) and streams. The result includes the account ID, native user or stream ID,
+Agents can use `conversations_list` with `channel: "zulip"` and a display-name or visible-email
+`query` to find people (including bots) and streams. Zulip may mask a user's real email address;
+search by name if that email finds nothing. The result includes the account ID, native user or stream ID,
 and an exact `conversationRef`. Use that reference with `conversations_send` or
 `conversations_turn` to address a discovered DM or topic without choosing an account or formatting
 a raw target. To explore existing topics, first find the stream ID, then query `<stream_id>/` or
