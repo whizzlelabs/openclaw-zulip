@@ -242,6 +242,14 @@ export class ZulipClient {
     return res.streams;
   }
 
+  async getStreamTopics(streamId: number): Promise<Array<{ name: string; max_id: number }>> {
+    const res = await this.request<{
+      result: string;
+      topics: Array<{ name: string; max_id: number }>;
+    }>("GET", `/users/me/${streamId}/topics`, { allow_empty_topic_name: true });
+    return res.topics;
+  }
+
   async getSubscriptions(): Promise<ZulipStream[]> {
     const res = await this.request<{
       result: string;
